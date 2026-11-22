@@ -79,8 +79,14 @@ def main():
     rows = []
     pending = 0
     for photo in photos:
-        answer_path = os.path.join(PROJECT_ROOT, photo["answer_path"])
-        if not os.path.exists(answer_path):
+        # A photo answer comes from the durable job `photo`, which writes
+        # out/jobs/photo/done/<photo_key>.txt. A single run of
+        # bin/tg_run_pi.py writes out/photo-<key>.txt instead, so read both.
+        candidates = [os.path.join(OUT_DIR, "jobs", "photo", "done",
+                                   photo["photo_key"] + ".txt"),
+                      os.path.join(PROJECT_ROOT, photo["answer_path"])]
+        answer_path = next((p for p in candidates if os.path.exists(p)), "")
+        if not answer_path:
             pending += 1
             continue
         with open(answer_path, encoding="utf-8") as f:
@@ -116,7 +122,8 @@ def main():
           % (len(rows), os.path.relpath(out_path, PROJECT_ROOT)))
     append_to_index(rows)
     if pending:
-        print("%d photos have no answer yet in out/" % pending, file=sys.stderr)
+        print("%d photos have no answer yet in out/jobs/photo/done/" % pending,
+              file=sys.stderr)
     return 0
 
 

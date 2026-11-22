@@ -170,6 +170,28 @@ def call_pi(prompt, model, provider, timeout, image_path=""):
         return 124, "", "timeout after %ss, process killed" % timeout, time.time() - started
 
 
+def shrink_image(image_path, max_side):
+    """Return a path to a copy of the image with its long side at most max_side.
+
+    The provider `zai` refuses a photo whose content filter fires on the
+    full-size pixels with HTTP 400 `code 1301`. The same photo at 200 px
+    passes, so a refused photo is retried once at 200 px. The copy goes to
+    `out/jobs/<job>/shrunk/`, never into the export folder.
+    """
+    stem = os.path.splitext(os.path.basename(image_path))[0]
+    out_path = os.path.join(PROJECT_ROOT, "out", "jobs", "shrunk",
+                            "%s-%d.jpg" % (stem, max_side))
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    if os.path.exists(out_path):
+        return out_path
+    result = subprocess.run(["sips", "-Z", str(max_side), image_path,
+                             "--out", out_path],
+                            capture_output=True, text=True)
+    if result.returncode != 0 or not os.path.exists(out_path):
+        return ""
+    return out_path
+
+
 def answer_keys(text):
     """Return the vote labels an answer holds, in order.
 
@@ -244,6 +266,15 @@ def run_unit(job, unit, args, counters):
                 counters["inflight"] -= 1
 
         answer_error = answer_is_error(stdout) or answer_is_wrong(prompt, stdout)
+        if image_path and "1301" in (stdout + stderr):
+            # The provider refused the pixels, not the prompt. Retry once at
+            # 200 px, which the same photo passes.
+            shrunk = shrink_image(image_path, 200)
+            if shrunk:
+                code, stdout, stderr, seconds = call_pi(
+                    prompt, args.model, args.provider, args.timeout, shrunk)
+                answer_error = (answer_is_error(stdout)
+                                or answer_is_wrong(prompt, stdout))
         if code == 0 and stdout.strip() and not answer_error:
             job.write_done(unit_id, stdout, {
                 "model": args.model, "seconds": round(seconds, 2),

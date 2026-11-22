@@ -5,16 +5,17 @@
 
 ## OPEN
 
-- RUNNING 261122 01 M  relevance stage: 3 votes per message, job `rel`   evidence: `python3 bin/tg_job.py --job rel --status`; started 23:29 at 0.9 units/s, 3961 units, ETA ~1h12m
-- TODO    261122 02 S  build `data/relevance.csv` after the rel job   evidence: `python3 bin/tg_relevance_consensus.py`
-- TODO    261122 03 M  photo stage: 797 prompts ready, needs a vision model   evidence: `python3 bin/tg_job.py --job photo --status` prints 0/797; blocked on a vision model, see the BLOCKED line
-- TODO    261122 04 S  join the photo answers into `data/index.csv`   evidence: `python3 bin/tg_photo_index.py`
-- TODO    261122 05 M  rebuild the index tables over the full summary set   evidence: `python3 bin/tg_aggregate.py`
-- TODO    261122 06 S  commit the finished tables and the run notes   evidence: `git -C . status`
+- RUNNING 261122 03 M  photo stage: 797 prompts, job `photo` on `zai.glm-5.3-flash-128k`   evidence: `python3 bin/tg_job.py --job photo --status`; started 02:31 at 0.33 units/s, ETA ~39m
+- DONE 261122 03 M  photo stage: 797/797 answers, 0 fail   evidence: `logs/photo.progress.log` last line `797/797 100.0% ok=1 fail=0`
+- DONE 261122 04 S  `data/photo_index.csv` and the photo rows of `data/index.csv`   evidence: `python3 bin/tg_photo_index.py` wrote 797 photo rows; relevance high 340, low 234, none 223
+- RUNNING 261122 05 M  rollup stage: 105 prompts, job `meta`   evidence: `python3 bin/tg_job.py --job meta --status`; started 03:17 at 0.03 units/s, ETA ~50m
+- TODO    261122 06 S  rebuild the index tables with the rollup answers   evidence: `python3 bin/tg_aggregate.py && python3 bin/tg_photo_index.py`
+- TODO    261122 07 S  commit the finished tables and the run notes   evidence: `git -C . status`
 
 ## BLOCKED
 
-- BLOCKED 261122 03 M  no vision model answers   evidence: `local-dgx1` DeepSeek reads text only; HuggingFace DeepSeek-V4.1-Flash-1017 returns 402 (needs credits); zai glm is not_ready; qwen3.8 on 192.168.1.53:12171 refused the connection. Only 192.168.1.51/55/56/57/58:12180 answer, and they serve the text model.
+- DONE 261122 01 M  relevance stage: 3963/3963 answers, 0 fail   evidence: `logs/rel.progress.log` last line `3963/3963 100.0% ok=2 fail=0`
+- DONE 261122 02 S  `data/relevance.csv` built   evidence: `python3 bin/tg_relevance_consensus.py` wrote 31251 vote rows, 10411 consensus rows; verdicts RELEVANT 3759, NOT_RELEVANT 4665, UNSURE 1987
 
 ## DONE
 
@@ -27,6 +28,24 @@
 - DONE 261122 00 S  repository kcg-ml/kcg-llm.transcript-extraction created and pushed   evidence: `git log --oneline` prints 73cf3f9
 
 ## NOTES
+
+- The photo stage runs on `zai.glm-5.3-flash-128k` (`glm-5.3-flash`, accepts
+  `text` and `image`). `pi auth check --provider zai` prints `not_ready`
+  `credentials_not_configured`, but the key file `~/.config/opencode/keys/zai.key`
+  named in `models.json` answers HTTP 200 on `https://api.z.ai/api/coding/paas/v4`.
+  Trust the call, not the auth check. Run the job with
+  `--provider zai.glm-5.3-flash-128k --model glm-5.3-flash`.
+- The `zai` content filter refuses 1 photo of the 797 with HTTP 400 `code 1301`
+  at full size and passes it at 200 px. `bin/tg_job.py` retries a photo once at
+  200 px through `sips` and writes the copy to `out/jobs/shrunk/`.
+- A photo prompt that does not name the answer language gets Chinese or Russian
+  field labels, and `bin/tg_photo_index.py` then parses no field. The prompt now
+  states `Write every value in English`. 21 of 797 answers had to be re-run.
+- The rollup prompts `prompts/meta-*.txt` reach the runner only through
+  `data/windows.csv`. `bin/tg_aggregate.py` appends them there, so run
+  `bin/tg_aggregate.py` before `bin/tg_job.py --job meta`.
+- `bin/tg_aggregate.py` rewrites `data/index.csv` and drops the photo rows, so
+  run `bin/tg_photo_index.py` after it. `bin/tg_pipeline.py` already does this.
 
 - The model name `deepseek-v4.1-flash-1017` matches 9 authenticated providers.
   `pi` then prints `Error: Model ... is ambiguous` on stdout and exits 0, so a

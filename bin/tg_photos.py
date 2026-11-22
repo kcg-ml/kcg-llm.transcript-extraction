@@ -54,7 +54,8 @@ The message that carried the photo:
   caption: {caption}
   reply to: {reply_to}
 
-Answer in exactly these 6 lines, one value per line, no other text:
+Answer in exactly these 6 lines, one value per line, no other text. Write
+every value in English, even when the photo holds Russian or Chinese text:
 
 SHOWS: what the photo shows, in 1 sentence (a chart, a slide, a screenshot of code, a table, a photo of a room)
 TEXT: every readable string in the photo that matters: the title, the axis labels, the legend, the code line, the table header. Separate them with ` | `. Write `none` if the photo holds no readable text.

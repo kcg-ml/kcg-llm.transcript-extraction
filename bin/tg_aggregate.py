@@ -312,11 +312,19 @@ def main():
     added = append_meta_windows(meta_rows)
     print("wrote %6d rollup prompts  prompts/meta-*.txt (%d new windows)"
           % (len(meta_rows), added))
+    # A rollup answer lands in out/jobs/meta/done/<meta_id>.txt, so the runner
+    # finds its units in data/windows.csv. The rows above carry the 12 columns
+    # of that file, so the runner can read them.
+    if added:
+        print("run the rollups with: python3 bin/tg_job.py --job meta")
 
     # The rollup answers, once they exist, are their own summary table.
     rollup = []
     for row in meta_rows:
-        path = os.path.join(OUT_DIR, row["window_id"] + ".txt")
+        path = os.path.join(OUT_DIR, "jobs", "meta", "done",
+                            row["window_id"] + ".txt")
+        if not os.path.exists(path):
+            path = os.path.join(OUT_DIR, row["window_id"] + ".txt")
         if not os.path.exists(path):
             continue
         with open(path, encoding="utf-8") as f:

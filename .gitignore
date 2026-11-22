@@ -1,0 +1,18 @@
+# Generated folders. The export is read from the 2 folders below, and every
+# other folder here is rebuilt by ./build.sh --rules and bin/tg_job.py.
+data/
+out/
+prompts/
+logs/
+
+# The Telegram exports are the input, and they are large. Keep them out of the
+# history and copy them in when the pipeline runs on a new machine.
+extract.telegram-log.vlad/
+extract.telegram-log.vlad-images/
+
+# Python bytecode from ./build.sh.
+__pycache__/
+*.pyc
+
+# macOS.
+.DS_Store

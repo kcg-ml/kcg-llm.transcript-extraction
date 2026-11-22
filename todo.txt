@@ -5,20 +5,21 @@
 
 ## OPEN
 
-- RUNNING 261122 03 M  photo stage: 797 prompts, job `photo` on `zai.glm-5.3-flash-128k`   evidence: `python3 bin/tg_job.py --job photo --status`; started 02:31 at 0.33 units/s, ETA ~39m
-- DONE 261122 03 M  photo stage: 797/797 answers, 0 fail   evidence: `logs/photo.progress.log` last line `797/797 100.0% ok=1 fail=0`
-- DONE 261122 04 S  `data/photo_index.csv` and the photo rows of `data/index.csv`   evidence: `python3 bin/tg_photo_index.py` wrote 797 photo rows; relevance high 340, low 234, none 223
-- RUNNING 261122 05 M  rollup stage: 105 prompts, job `meta`   evidence: `python3 bin/tg_job.py --job meta --status`; started 03:17 at 0.03 units/s, ETA ~50m
-- TODO    261122 06 S  rebuild the index tables with the rollup answers   evidence: `python3 bin/tg_aggregate.py && python3 bin/tg_photo_index.py`
-- TODO    261122 07 S  commit the finished tables and the run notes   evidence: `git -C . status`
+- none
 
 ## BLOCKED
 
-- DONE 261122 01 M  relevance stage: 3963/3963 answers, 0 fail   evidence: `logs/rel.progress.log` last line `3963/3963 100.0% ok=2 fail=0`
-- DONE 261122 02 S  `data/relevance.csv` built   evidence: `python3 bin/tg_relevance_consensus.py` wrote 31251 vote rows, 10411 consensus rows; verdicts RELEVANT 3759, NOT_RELEVANT 4665, UNSURE 1987
+- none
 
 ## DONE
 
+- DONE 261122 01 M  relevance stage: 3963/3963 answers, 0 fail   evidence: `logs/rel.progress.log` last line `3963/3963 100.0% ok=2 fail=0`
+- DONE 261122 02 S  `data/relevance.csv` built   evidence: `python3 bin/tg_relevance_consensus.py` wrote 31251 vote rows, 10411 consensus rows; verdicts RELEVANT 3759, NOT_RELEVANT 4665, UNSURE 1987
+- DONE 261122 03 M  photo stage: 797/797 answers, 0 fail   evidence: `logs/photo.progress.log` last line `797/797 100.0% ok=1 fail=0`
+- DONE 261122 04 S  `data/photo_index.csv` and the photo rows of `data/index.csv`   evidence: `python3 bin/tg_photo_index.py` wrote 797 photo rows; relevance high 340, low 234, none 223
+- DONE 261122 05 M  rollup stage: 105/105 answers, 0 fail   evidence: `logs/meta.progress.log` last line `105/105 100.0% ok=105 fail=0`
+- DONE 261122 06 S  index tables rebuilt with the rollup answers   evidence: `data/summary_rollup.csv` 105 rows, `data/index.csv` 26409 rows, `./build.sh` prints `24 csv files checked, 0 bad`
+- DONE 261122 07 S  tables and scripts committed and pushed   evidence: `git log --oneline` prints 932c185
 - DONE 261122 00 S  text export read: 10411 messages, 1392793 chars, 608 URLs   evidence: `data/messages.csv`
 - DONE 261122 00 S  3 split modes written   evidence: `data/parts_unbroken.csv` 10334, `parts_sentence.csv` 22049, `parts_paragraph.csv` 16339
 - DONE 261122 00 M  rule extraction over every message   evidence: `data/references.csv` 6546 rows over 14 kinds

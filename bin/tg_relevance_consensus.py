@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Stage 10: turn the 3 relevance votes per message into 1 verdict.
 
-Reads  : data/relevance_windows.csv, out/rel-<window_id>.txt, data/messages.csv
+Reads  : data/relevance_windows.csv, out/jobs/rel/done/<window_id>.txt,
+         data/messages.csv
 Writes : data/relevance_votes.csv   one row per (message, vote)
          data/relevance.csv         one row per message, with the consensus
 
@@ -28,6 +29,10 @@ import sys
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+# The durable runner writes 1 answer file per unit, and that file is the
+# record of a finished unit. The older flat `out/<id>.txt` is read as a
+# fallback, so an answer from an earlier run still counts.
+JOB_DONE_DIR = os.path.join(PROJECT_ROOT, "out", "jobs", "rel", "done")
 OUT_DIR = os.path.join(PROJECT_ROOT, "out")
 
 # A vote line starts with the label the prompt gave its message, which is
@@ -53,13 +58,22 @@ def read_csv(name):
         return list(csv.DictReader(f))
 
 
-def prompt_key_map(prompt):
-    """Return {label: message_key} for the messages of one prompt."""
-    labels = LABEL_RE.findall(prompt)
+def prompt_key_map(prompt, window):
+    """Return {label: message_key} for the messages of one window.
+
+    The prompt labels its messages `M<position> of <total>` and holds no
+    message id, so the keys come from the `message_keys` column of the window
+    table. A prompt that still holds message ids is read from the prompt.
+    """
     keys = KEY_RE.findall(prompt)
-    if labels and len(labels) == len(keys):
-        return dict(zip(labels, keys))
-    return {key: key for key in keys}
+    if keys:
+        labels = LABEL_RE.findall(prompt)
+        if labels and len(labels) == len(keys):
+            return dict(zip(labels, keys))
+        return {key: key for key in keys}
+    keys = window.get("message_keys", "").split()
+    total = len(keys)
+    return {"M%d of %d" % (i, total): key for i, key in enumerate(keys, 1)}
 
 
 def parse_votes(text, key_map):
@@ -83,22 +97,27 @@ def parse_votes(text, key_map):
 
 
 def verdict_of(votes):
-    """Return (verdict, agreement) for the votes of one message."""
+    """Return (verdict, agreement) for the votes of one message.
+
+    A message sits in 3 windows, and a message near the end of the chat sits
+    in a 4th or 5th because the last windows wrap to the first messages. The
+    rule reads the share of `Y` votes, so it holds for any count of votes.
+    """
     counts = collections.Counter(votes)
     y, n, u = counts["Y"], counts["N"], counts["U"]
     total = y + n + u
     if total < 3:
         return "UNSURE", "incomplete"
-    if y == 3:
+    if y == total:
         return "RELEVANT", "unanimous"
-    if y == 2:
-        return "RELEVANT", "majority" if n == 1 else "majority-unsure"
-    if y == 1:
-        if n == 2:
-            return "NOT_RELEVANT", "minority"
+    if n == total:
+        return "NOT_RELEVANT", "unanimous"
+    if y * 2 > total:
+        return "RELEVANT", "majority" if u == 0 else "majority-unsure"
+    if n * 2 > total:
+        return "NOT_RELEVANT", "majority" if y == 0 else "minority"
+    if y and n:
         return "UNSURE", "split"
-    if n >= 2:
-        return "NOT_RELEVANT", "unanimous" if n == 3 else "majority"
     return "UNSURE", "unsure-majority"
 
 
@@ -112,13 +131,15 @@ def main():
 
     for window in windows:
         path = os.path.join(PROJECT_ROOT, window["prompt_path"])
-        answer_path = os.path.join(OUT_DIR, window["rel_window_id"] + ".txt")
+        answer_path = os.path.join(JOB_DONE_DIR, window["rel_window_id"] + ".txt")
+        if not os.path.exists(answer_path):
+            answer_path = os.path.join(OUT_DIR, window["rel_window_id"] + ".txt")
         if not os.path.exists(answer_path):
             missing_windows += 1
             continue
         with open(path, encoding="utf-8") as f:
             prompt = f.read()
-        key_map = prompt_key_map(prompt)
+        key_map = prompt_key_map(prompt, window)
         with open(answer_path, encoding="utf-8") as f:
             answer = f.read()
         votes = parse_votes(answer, key_map)

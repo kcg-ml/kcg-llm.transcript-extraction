@@ -49,7 +49,8 @@ MAX_WORDS = 150
 PROMPT_CHAR_BUDGET = 24000
 
 WINDOW_FIELDS = ["rel_window_id", "vote_index", "start_index", "end_index",
-                 "first_message_key", "last_message_key", "message_count",
+                 "first_message_key", "last_message_key", "message_keys",
+                 "message_count",
                  "char_count", "prompt_path", "prompt_chars"]
 
 VOTE_FIELDS = ["message_key", "rel_window_id", "vote_index", "vote", "reason",
@@ -131,10 +132,17 @@ def build_windows(messages):
 
     short = [m for m in messages if m["message_key"] not in long_keys]
     step = WINDOW_SIZE
+    total = len(short)
     for vote_index, offset in enumerate(OFFSETS):
         start = 0
-        while start < len(short):
+        while start < total:
             chunk = short[start + offset:start + offset + WINDOW_SIZE]
+            if not chunk:
+                # The offset runs past the last message, so the window wraps
+                # to the first messages. Without the wrap the first 10
+                # messages of the chat sit in 1 window only and never get 3
+                # votes, and the consensus stage reports them `incomplete`.
+                chunk = short[:start + offset + WINDOW_SIZE - total]
             if not chunk:
                 break
             windows.append({
@@ -188,6 +196,7 @@ def main():
             "end_index": position[window["messages"][-1]["message_key"]],
             "first_message_key": window["messages"][0]["message_key"],
             "last_message_key": window["messages"][-1]["message_key"],
+            "message_keys": " ".join(m["message_key"] for m in window["messages"]),
             "message_count": len(window["messages"]),
             "char_count": sum(int(m["char_len"]) for m in window["messages"]),
             "prompt_path": os.path.relpath(path, PROJECT_ROOT),

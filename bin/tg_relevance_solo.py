@@ -14,6 +14,7 @@ name what they found.
 
 Reads  : data/messages.csv, data/references.csv, data/links.csv
 Writes : out/jobs/rel/done/rel-solo-<message_key>-v<vote>.txt
+         each file holds 1 line: `M1 of 1 <Y|N|U> <reason>`
 
 The 3 votes of a solo window are the 3 rules below, so the consensus stage
 reads a solo message the same way it reads a model answer:
@@ -179,8 +180,11 @@ def main():
             if os.path.exists(path) and not args.force:
                 skipped += 1
                 continue
+            # A solo window holds 1 message, so its label is `M1 of 1`. The
+            # answer uses the same label form as a model answer, so the
+            # consensus stage reads both the same way.
             with open(path, "w", encoding="utf-8") as f:
-                f.write("%s %s %s\n" % (key, vote, reason))
+                f.write("M1 of 1 %s %s\n" % (vote, reason))
             written += 1
             tally[vote] += 1
 

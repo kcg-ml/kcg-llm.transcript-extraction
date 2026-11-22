@@ -171,8 +171,24 @@ def call_pi(prompt, model, provider, timeout, image_path=""):
 
 
 def answer_keys(text):
-    """Return the message keys an answer votes on, in order."""
+    """Return the vote labels an answer holds, in order.
+
+    A relevance prompt labels each message `M<position> of <total>`, so the
+    answer holds no message id and cannot invent one. A prompt that labels
+    its messages by message id still yields those ids.
+    """
+    labels = re.findall(r"^\s*`?(M[0-9]+ of [0-9]+)`?\s+[YNU]\b", text, re.M)
+    if labels:
+        return labels
     return re.findall(r"^\s*`?([0-9]{6}-[0-9]{6})`?\s+[YNU]\b", text, re.M)
+
+
+def prompt_labels(prompt):
+    """Return the labels a prompt gives its messages, in order."""
+    labels = re.findall(r"^### (M[0-9]+ of [0-9]+)", prompt, re.M)
+    if labels:
+        return labels
+    return re.findall(r"^### ([0-9]{6}-[0-9]{6})", prompt, re.M)
 
 
 def answer_is_wrong(prompt, text):
@@ -182,7 +198,7 @@ def answer_is_wrong(prompt, text):
     vote then lands on a message that does not exist. The count check catches
     the same defect from the other side: 1 `###` line must yield 1 vote line.
     """
-    expected = re.findall(r"^### ([0-9]{6}-[0-9]{6})", prompt, re.M)
+    expected = prompt_labels(prompt)
     if not expected:
         return ""
     got = answer_keys(text)

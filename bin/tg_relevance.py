@@ -83,10 +83,12 @@ only makes sense with a message outside this window.
 Answer with exactly 1 line per `###` message, in the order the messages
 appear, and no other text. Each line is:
 
-  <message key> <Y|N|U> <3 to 12 words of reason>
+  M<position> of <total> <Y|N|U> <3 to 12 words of reason>
 
-The message key is the 13-character id at the start of the `###` line, for
-example `593142-251115`. Copy the key from the `###` line; never make one up.
+Each `###` line starts with `M<position> of <total>`. Write 1 line for each
+`###` line, and start the line with that label, for example `M3 of 10`. The
+label is the only key you write: never write a message id, and never write a
+line for a label that has no `###` line below.
 
 The count of lines you write equals the count of `###` lines below. When 1
 `###` line is below, you write 1 line and stop. Do not add a header, do not
@@ -148,9 +150,13 @@ def build_windows(messages):
 def render_prompt(window):
     lines = [RELEVANCE_PROMPT]
     used = len(RELEVANCE_PROMPT)
-    for msg in window["messages"]:
-        block = "### %s | %s | %s\n%s\n" % (
-            msg["message_key"], msg["date"], msg["from"], msg["text"])
+    total = len(window["messages"])
+    for position, msg in enumerate(window["messages"], 1):
+        # The position tells the model how many messages the window holds and
+        # that the keys are not consecutive, so it stops inventing the keys
+        # that a gap in the id sequence would hold.
+        block = "### M%d of %d | %s | %s\n%s\n" % (
+            position, total, msg["date"], msg["from"], msg["text"])
         if used + len(block) > PROMPT_CHAR_BUDGET:
             break
         lines.append(block)

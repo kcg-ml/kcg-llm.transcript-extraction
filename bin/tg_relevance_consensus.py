@@ -30,7 +30,15 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 OUT_DIR = os.path.join(PROJECT_ROOT, "out")
 
-VOTE_LINE_RE = re.compile(r"^\s*`?([0-9]{6}-[0-9]{6})`?\s*[|:]?\s*([YNUynu])\b\s*(.*)$")
+# A vote line starts with the label the prompt gave its message, which is
+# `M<position> of <total>` for a relevance prompt and a message id for an
+# older prompt. Both forms are read, so an answer written before the label
+# change still counts.
+VOTE_LINE_RE = re.compile(
+    r"^\s*`?(M[0-9]+ of [0-9]+|[0-9]{6}-[0-9]{6})`?\s*[|:]?\s*([YNUynu])\b\s*(.*)$")
+
+LABEL_RE = re.compile(r"^### (M[0-9]+ of [0-9]+) \|", re.M)
+KEY_RE = re.compile(r"^### ([0-9]{6}-[0-9]{6})", re.M)
 
 VOTE_FIELDS = ["message_key", "rel_window_id", "vote_index", "vote", "reason",
                "date", "month", "from", "word_len"]
@@ -45,19 +53,29 @@ def read_csv(name):
         return list(csv.DictReader(f))
 
 
-def parse_votes(text, allowed_keys):
-    """Return the votes of one answer, keeping only the keys of its window."""
+def prompt_key_map(prompt):
+    """Return {label: message_key} for the messages of one prompt."""
+    labels = LABEL_RE.findall(prompt)
+    keys = KEY_RE.findall(prompt)
+    if labels and len(labels) == len(keys):
+        return dict(zip(labels, keys))
+    return {key: key for key in keys}
+
+
+def parse_votes(text, key_map):
+    """Return {message_key: (vote, reason)} for the votes of one answer."""
     votes = {}
     for line in text.split("\n"):
         match = VOTE_LINE_RE.match(line)
         if not match:
             continue
-        key = match.group(1)
-        if key not in allowed_keys:
+        label = match.group(1)
+        key = key_map.get(label)
+        if key is None:
             continue
         vote = match.group(2).upper()
         reason = match.group(3).strip()
-        # A model that repeats a key gives the same answer twice; the first
+        # A model that repeats a label gives the same answer twice; the first
         # line wins, because the repeat is the model echoing its own output.
         if key not in votes:
             votes[key] = (vote, reason)
@@ -98,13 +116,12 @@ def main():
         if not os.path.exists(answer_path):
             missing_windows += 1
             continue
-        # The keys a window may vote on are the keys of its prompt.
         with open(path, encoding="utf-8") as f:
             prompt = f.read()
-        allowed = set(re.findall(r"^### ([0-9]{6}-[0-9]{6})", prompt, re.M))
+        key_map = prompt_key_map(prompt)
         with open(answer_path, encoding="utf-8") as f:
             answer = f.read()
-        votes = parse_votes(answer, allowed)
+        votes = parse_votes(answer, key_map)
         for key, (vote, reason) in votes.items():
             msg = messages.get(key, {})
             vote_rows.append({

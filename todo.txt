@@ -1,0 +1,38 @@
+# Task list of pi.261122.llm-idea-extraction
+#
+# A line states the state, the date, the rank, the difficulty, the task, and
+# the evidence. Open lines sit above closed lines.
+
+## OPEN
+
+- RUNNING 261122 01 M  relevance stage: 3 votes per message, job `rel`   evidence: `python3 bin/tg_job.py --job rel --status`; started 23:29 at 0.9 units/s, 3961 units, ETA ~1h12m
+- TODO    261122 02 S  build `data/relevance.csv` after the rel job   evidence: `python3 bin/tg_relevance_consensus.py`
+- TODO    261122 03 M  photo stage: 797 prompts ready, needs a vision model   evidence: `python3 bin/tg_job.py --job photo --status` prints 0/797; blocked on a vision model, see the BLOCKED line
+- TODO    261122 04 S  join the photo answers into `data/index.csv`   evidence: `python3 bin/tg_photo_index.py`
+- TODO    261122 05 M  rebuild the index tables over the full summary set   evidence: `python3 bin/tg_aggregate.py`
+- TODO    261122 06 S  commit the finished tables and the run notes   evidence: `git -C . status`
+
+## BLOCKED
+
+- BLOCKED 261122 03 M  no vision model answers   evidence: `local-dgx1` DeepSeek reads text only; HuggingFace DeepSeek-V4.1-Flash-1017 returns 402 (needs credits); zai glm is not_ready; qwen3.8 on 192.168.1.53:12171 refused the connection. Only 192.168.1.51/55/56/57/58:12180 answer, and they serve the text model.
+
+## DONE
+
+- DONE 261122 00 S  text export read: 10411 messages, 1392793 chars, 608 URLs   evidence: `data/messages.csv`
+- DONE 261122 00 S  3 split modes written   evidence: `data/parts_unbroken.csv` 10334, `parts_sentence.csv` 22049, `parts_paragraph.csv` 16339
+- DONE 261122 00 M  rule extraction over every message   evidence: `data/references.csv` 6546 rows over 14 kinds
+- DONE 261122 00 M  w10 summaries: 1042 windows, 1040 ok, 0 fail   evidence: `logs/w10-run.out` last line `done in 3900s: ok=1040 skip=2 fail=0`
+- DONE 261122 00 S  image export complete: 10423 messages, 797 photos, 0 missing files   evidence: `data/photos.csv`
+- DONE 261122 00 M  durable job runner with a progress line every N seconds   evidence: `bin/tg_job.py`, `logs/rel.progress.log`
+- DONE 261122 00 S  repository kcg-ml/kcg-llm.transcript-extraction created and pushed   evidence: `git log --oneline` prints 73cf3f9
+
+## NOTES
+
+- The model name `deepseek-v4.1-flash-1017` matches 9 authenticated providers.
+  `pi` then prints `Error: Model ... is ambiguous` on stdout and exits 0, so a
+  runner that trusts the exit code saves the error as an answer. `bin/tg_job.py`
+  names the provider `local-dgx1.deepseek-v4.1-flash-1017-128k` and treats an
+  `Error:` first line as a failure.
+- A model call can outlive its timeout when a child holds the pipe open.
+  `bin/tg_job.py` kills the process on timeout instead of waiting.
+- Progress log: `logs/rel.progress.log`. Job answers: `out/jobs/rel/done/`.

@@ -31,7 +31,7 @@ import csv
 import datetime
 import json
 import os
-import shutil
+import re
 import subprocess
 import sys
 import threading
@@ -170,6 +170,32 @@ def call_pi(prompt, model, provider, timeout, image_path=""):
         return 124, "", "timeout after %ss, process killed" % timeout, time.time() - started
 
 
+def answer_keys(text):
+    """Return the message keys an answer votes on, in order."""
+    return re.findall(r"^\s*`?([0-9]{6}-[0-9]{6})`?\s+[YNU]\b", text, re.M)
+
+
+def answer_is_wrong(prompt, text):
+    """Return a reason when the answer votes on a key its prompt does not hold.
+
+    A model that invents keys answers a window it was never given, and the
+    vote then lands on a message that does not exist. The count check catches
+    the same defect from the other side: 1 `###` line must yield 1 vote line.
+    """
+    expected = re.findall(r"^### ([0-9]{6}-[0-9]{6})", prompt, re.M)
+    if not expected:
+        return ""
+    got = answer_keys(text)
+    unknown = [k for k in got if k not in set(expected)]
+    if unknown:
+        return "answer votes on %d key(s) not in the prompt: %s" % (
+            len(unknown), ", ".join(unknown[:5]))
+    if len(got) != len(expected):
+        return "answer has %d vote lines, the prompt has %d messages" % (
+            len(got), len(expected))
+    return ""
+
+
 def answer_is_error(text):
     """Return the error line when pi answered with an error instead of a result."""
     stripped = text.strip()
@@ -201,7 +227,7 @@ def run_unit(job, unit, args, counters):
             with counters["lock"]:
                 counters["inflight"] -= 1
 
-        answer_error = answer_is_error(stdout)
+        answer_error = answer_is_error(stdout) or answer_is_wrong(prompt, stdout)
         if code == 0 and stdout.strip() and not answer_error:
             job.write_done(unit_id, stdout, {
                 "model": args.model, "seconds": round(seconds, 2),

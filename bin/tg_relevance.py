@@ -80,15 +80,26 @@ Mark `N` when the message carries none of those:
 Mark `U` when the message is too short or too ambiguous to decide, or when it
 only makes sense with a message outside this window.
 
-Answer with exactly 1 line per message, in the order the messages appear, and
-no other text. Each line is:
+Answer with exactly 1 line per `###` message, in the order the messages
+appear, and no other text. Each line is:
 
   <message key> <Y|N|U> <3 to 12 words of reason>
 
-The message key is the 13-character id at the start of each `###` line, for
-example `593142-251115`. Do not skip a message. Do not add a header. Write
-exactly 1 line for each `###` line, and no line for a message that has no
-`###` line. A message that is long enough to fill the window still gets 1 line.
+The message key is the 13-character id at the start of the `###` line, for
+example `593142-251115`. Copy the key from the `###` line; never make one up.
+
+The count of lines you write equals the count of `###` lines below. When 1
+`###` line is below, you write 1 line and stop. Do not add a header, do not
+add a summary, and do not write a line for a message that has no `###` line.
+A message long enough to fill the window still gets 1 line.
+
+A message body may hold several paragraphs, a list, or a quoted block. The
+whole body is 1 message, so it gets 1 line. Never split a body into 1 line
+per paragraph.
+
+Never continue the key sequence past the last `###` line. A key that is not
+written on a `###` line is not a message, so a line for it is a wrong answer.
+The last `###` line of this prompt is the last message of this prompt.
 
 ----- MESSAGES -----
 """

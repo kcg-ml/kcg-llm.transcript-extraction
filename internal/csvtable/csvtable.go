@@ -1,8 +1,8 @@
-// Package csvtable reads and writes the quoted CSV tables of data/.
+// Package csvtable reads and writes the CSV tables of data/.
 //
-// Every table in data/ is written with every field quoted, so a text column
-// may hold a comma, a quote, or a newline. The reader accepts a quoted and an
-// unquoted field, so a table written by hand still parses.
+// A field is quoted only when it holds a comma, a quote, or a newline, so a
+// text column may hold any byte and the table stays readable. The reader
+// accepts a quoted and an unquoted field, so a table written by hand parses.
 package csvtable
 
 import (
@@ -82,7 +82,7 @@ func ReadTableIfPresent(filePath string, headerColumnNames []string) (*Table, er
 	return ReadTable(filePath)
 }
 
-// WriteTable writes every field quoted, so a text column may hold any byte.
+// WriteTable writes the table, quoting a field only when it needs it.
 func (table *Table) WriteTable(filePath string) error {
 	createError := os.MkdirAll(filepath.Dir(filePath), 0o755)
 	if createError != nil {

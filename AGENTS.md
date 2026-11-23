@@ -136,8 +136,9 @@ The photo stage needs a model that accepts image input. The default model
 
 - `data/` holds the CSV tables, and it is the source of truth for every later stage.
 - `prompts/` holds one prompt file per window and per photo.
-- `out/` holds one answer file per window and per photo, plus `run-state.csv`
-  and `out/jobs/<job>/` for the durable runner.
+- `out/` holds one answer file per window and per photo, plus
+  `out/jobs/<job>/` for the durable runner, which keeps its state in
+  `out/jobs/<job>/state.jsonl`.
 - `logs/` holds `<job>.progress.log` for each durable job.
 - `internal/` holds one package per stage, and `cmd/` holds the 2 commands.
 - `build.sh` at the repository root builds and checks the pipeline.
@@ -157,11 +158,11 @@ general to the specific, in Java style: `UpperCamelCase` for an exported
 name, `lowerCamelCase` for an unexported one.
 
 The prefix rule: a name starts with the noun of its own kind, then narrows.
-A table of windows is `WindowTable`, its column names are
-`WindowTableColumnNames`, and the function that builds it is
-`windowTableOf`. A reader who sees `WindowTableColumnNames` knows the kind
-(table), the subject (window), and the content (column names) without opening
-the file.
+The column names of the window table are `WindowTableColumnNames`, the rows of
+the summary table are `SummaryTableColumnNames`, and the function that builds
+the index table is `buildIndexTableList`. A reader who sees
+`WindowTableColumnNames` knows the kind (column names), the subject (window),
+and the table it belongs to (the window table) without opening the file.
 
 3 worked examples from this repository:
 

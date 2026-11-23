@@ -146,17 +146,21 @@ func Run(projectFolderPath string, imageExportFolderName string, forceRewrite bo
 			missingFileNameList = append(missingFileNameList, message.Photo)
 			continue
 		}
+		// The prompt names `none` so the model reads a word, not a gap. The
+		// table keeps the empty caption, so a reader can tell a photo with no
+		// caption from one whose caption is the word `none`.
 		captionText := strings.TrimSpace(telegramexport.MessageTextOf(telegramexport.ExportMessage{
 			Text: message.Text}))
-		if captionText == "" {
-			captionText = "none"
+		promptCaptionText := captionText
+		if promptCaptionText == "" {
+			promptCaptionText = "none"
 		}
 		replyToText := "none"
 		if message.ReplyToMessageId != 0 {
 			replyToText = fmt.Sprintf("%d", message.ReplyToMessageId)
 		}
 		promptText := fmt.Sprintf(PhotoPromptTemplate, messageKey, message.Date,
-			message.From, captionText, replyToText)
+			message.From, promptCaptionText, replyToText)
 		promptFilePath := filepath.Join(promptFolderPath, photoKey+".txt")
 		if forceRewrite {
 			if writeError := os.WriteFile(promptFilePath, []byte(promptText), 0o644); writeError != nil {

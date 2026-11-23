@@ -1,5 +1,5 @@
 # Generated folders. The export is read from the 2 folders below, and every
-# other folder here is rebuilt by ./build.sh --rules and bin/tg_job.py.
+# other folder here is rebuilt by ./build.sh --rules and the `job` subcommand.
 data/
 out/
 prompts/
@@ -10,9 +10,10 @@ logs/
 extract.telegram-log.vlad/
 extract.telegram-log.vlad-images/
 
-# Python bytecode from ./build.sh.
-__pycache__/
-*.pyc
+# The compiled commands.
+.build/
 
 # macOS.
 .DS_Store
+# The pi goal ledger of this session.
+.pi/

@@ -46,36 +46,49 @@ from the image export, and join the 2 on the message id.
 
 ## The chain
 
-| script | reads | writes |
-| --- | --- | --- |
-| `bin/tg_extract.py` | `extract.telegram-log.vlad/result.json` | `data/messages.csv` and 6 side tables |
-| `bin/tg_split.py` | `data/messages.csv` | `data/parts_unbroken.csv`, `parts_sentence.csv`, `parts_paragraph.csv` |
-| `bin/tg_references.py` | `data/messages.csv` | `data/references.csv` |
-| `bin/tg_windows.py` | `data/messages.csv`, `data/references.csv` | `data/windows.csv`, `prompts/` |
-| `bin/tg_relevance.py` | `data/messages.csv` | `data/relevance_windows.csv`, `prompts/rel-*.txt` |
-| `bin/tg_job.py` | `prompts/`, `data/photos.csv` | `out/jobs/<job>/done/<id>.txt`, `logs/<job>.progress.log` |
-| `bin/tg_run_pi.py` | `prompts/` | `out/<window_id>.txt`, `logs/` |
-| `bin/tg_aggregate.py` | `out/` | `data/summaries.csv`, `data/index*.csv`, `prompts/meta-*.txt` |
-| `bin/tg_relevance_consensus.py` | `out/jobs/rel/done/` | `data/relevance_votes.csv`, `data/relevance.csv` |
-| `bin/tg_photos.py` | `extract.telegram-log.vlad-images/result.json` | `data/photos.csv`, `prompts/photo-*.txt` |
-| `bin/tg_photo_index.py` | `out/jobs/photo/done/` | `data/photo_index.csv`, the photo rows of `data/index.csv` |
-| `bin/tg_pipeline.py` | — | runs the rule chain in order |
+Every stage is a Go package under `internal/`, and one command runs them all.
+There is no Python in this repository.
 
-Run the whole chain with `./build.sh --rules`, then `bin/tg_job.py` for the
-model stages.
+| package | reads | writes |
+| --- | --- | --- |
+| `internal/telegramexport` | `extract.telegram-log.vlad/result.json` | `data/messages.csv` and 6 side tables |
+| `internal/messagesplit` | `data/messages.csv` | `data/parts_unbroken.csv`, `parts_sentence.csv`, `parts_paragraph.csv`, `parts_manifest.csv` |
+| `internal/referenceextraction` | `data/messages.csv` | `data/references.csv` |
+| `internal/summarywindow` | `data/messages.csv`, `data/references.csv` | `data/windows.csv`, `prompts/` |
+| `internal/relevancewindow` | `data/messages.csv` | `data/relevance_windows.csv`, `prompts/rel-*.txt` |
+| `internal/relevancesolo` | `data/messages.csv` | `out/jobs/rel/done/rel-solo-*.txt` |
+| `internal/relevanceconsensus` | `out/jobs/rel/done/` | `data/relevance_votes.csv`, `data/relevance.csv` |
+| `internal/photoextraction` | `extract.telegram-log.vlad-images/result.json` | `data/photos.csv`, `prompts/photo-*.txt` |
+| `internal/phototable` | `out/jobs/photo/done/` | `data/photo_index.csv`, the photo rows of `data/index.csv` |
+| `internal/summaryaggregation` | `out/` | `data/summaries.csv`, `data/summary_items.csv`, `data/summary_rollup.csv`, `data/index*.csv`, `prompts/meta-*.txt` |
+| `internal/durablejob` | `prompts/`, `data/photos.csv` | `out/jobs/<job>/done/<id>.txt`, `logs/<job>.progress.log` |
+| `internal/jobunit` | `data/` | the unit list of one durable job |
+| `internal/pipelinechain` | — | runs the rule stages in order |
+| `internal/csvtable` | — | reads and writes a CSV table |
+| `internal/textrule` | — | the shared text rules: URLs, word counts, rune-safe cuts |
+
+`cmd/transcriptextraction` is the only entry point. Its subcommands are
+`extract`, `split`, `references`, `windows`, `relevance-windows`,
+`relevance-solo`, `relevance-consensus`, `photos`, `photo-index`, `aggregate`,
+`job`, and `pipeline`. `cmd/csvcheck` checks the column count of every CSV.
+
+Run the rule stages with `./build.sh --rules`, then a model stage with
+`transcriptextraction job`.
 
 ## Build and run
 
-`./build.sh` compiles every script in `bin/`, checks that each answers
-`--help`, and checks that every CSV in `data/` has the column count its header
-states. `./build.sh --clean` removes `data/`, `out/`, `prompts/`, and `logs/`
-first. `./build.sh --rules` also runs the rule stages, which make no model call.
+`./build.sh` compiles `cmd/transcriptextraction` and `cmd/csvcheck` into
+`.build/`, runs `go vet ./...`, checks that every subcommand answers `--help`
+with exit 0, and checks that every CSV in `data/` has the column count its
+header states. `./build.sh --clean` removes `data/`, `out/`, `prompts/`, and
+`logs/` first. `./build.sh --rules` also runs the rule stages, which make no
+model call.
 
-A model stage runs through `bin/tg_job.py`, which is durable:
+A model stage runs through `transcriptextraction job`, which is durable:
 
 ```
-python3 bin/tg_job.py --job rel --jobs 8 --poll 30
-python3 bin/tg_job.py --job rel --status
+.build/transcriptextraction job --job rel --jobs 8 --poll 30
+.build/transcriptextraction job --job rel --status
 ```
 
 The job writes one answer file per unit under `out/jobs/<job>/done/`, and a
@@ -84,10 +97,10 @@ progress line prints every `--poll` seconds and goes to
 `logs/<job>.progress.log`, so `tail -f logs/rel.progress.log` shows
 `done/total`, the rate, the ETA, and the calls in flight.
 
-`bin/tg_job.py` names the provider, not just the model. A bare model name
-matches 9 authenticated providers, and `pi` then prints
-`Error: Model ... is ambiguous` on stdout and still exits 0. The job treats
-that line as a failure, so an error can never be saved as an answer.
+The job names the provider, not just the model. A bare model name matches 9
+authenticated providers, and `pi` then prints `Error: Model ... is ambiguous`
+on stdout and still exits 0. The job treats that line as a failure, so an
+error can never be saved as an answer.
 
 ## The message id
 
@@ -106,8 +119,8 @@ per paragraph, and a code fence stays whole. Every mode covers the same
 
 10-message windows roll into 100-message windows, those roll into months, and
 the months roll into one summary of the chat. A rollup is a model answer, not
-a string join: `bin/tg_aggregate.py` writes `prompts/meta-*.txt` and
-`bin/tg_job.py --job meta` answers it.
+a string join: `internal/summaryaggregation` writes `prompts/meta-*.txt` and
+`transcriptextraction job --job meta` answers it.
 
 ## The photo stage
 
@@ -125,7 +138,40 @@ The photo stage needs a model that accepts image input. The default model
 - `prompts/` holds one prompt file per window and per photo.
 - `out/` holds one answer file per window and per photo, plus `run-state.csv`
   and `out/jobs/<job>/` for the durable runner.
-- `logs/` holds one log file per run of `bin/tg_run_pi.py`, and
-  `<job>.progress.log` for each durable job.
-- `bin/` holds the stage scripts and the durable job runner.
+- `logs/` holds `<job>.progress.log` for each durable job.
+- `internal/` holds one package per stage, and `cmd/` holds the 2 commands.
 - `build.sh` at the repository root builds and checks the pipeline.
+
+## Go only
+
+This repository holds Go and no Python. A stage is a package under
+`internal/`, and `cmd/` holds the commands that call it. A new stage adds a
+package, a subcommand, and a row in the chain table above. Do not add a
+script in another language, and do not call one from `build.sh`.
+
+## Naming
+
+Every identifier names the thing it holds and the place it sits, so a reader
+knows what it is without reading its body. The name is a path from the
+general to the specific, in Java style: `UpperCamelCase` for an exported
+name, `lowerCamelCase` for an unexported one.
+
+The prefix rule: a name starts with the noun of its own kind, then narrows.
+A table of windows is `WindowTable`, its column names are
+`WindowTableColumnNames`, and the function that builds it is
+`windowTableOf`. A reader who sees `WindowTableColumnNames` knows the kind
+(table), the subject (window), and the content (column names) without opening
+the file.
+
+3 worked examples from this repository:
+
+| name | reads as |
+| --- | --- |
+| `referenceextraction.TermPatternOf` | a function in the reference-extraction package that returns the pattern of one term |
+| `summarywindow.PromptCharBudget` | a constant in the summary-window package: the character budget of one prompt |
+| `durablejob.AnswerWrongnessOf` | a function in the durable-job package that returns why one model answer is wrong |
+
+A name that needs a comment to explain it is wrong, so rename it. Never write
+`var`, `tmp`, `buf`, `res`, `val`, `data`, `info`, `obj`, or `item` as a name:
+each one names no object of this domain. Write `messageRow`, `promptText`,
+`stdoutBuffer`, `windowList`, `referenceTable`, or `itemText` instead.

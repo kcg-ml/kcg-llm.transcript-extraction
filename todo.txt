@@ -13,10 +13,14 @@
 
 ## DONE
 
+- DONE 261122 08 L  pipeline rewritten in Go, no Python left   evidence: `find . -name '*.py' -not -path './extract.*'` prints nothing; `go build ./...` and `go vet ./...` exit 0; `./build.sh` prints `24 csv files checked, 0 bad` and `build ok`
+- DONE 261122 09 M  Go rule stages reproduce the Python tables   evidence: parity run into `/tmp/parity` diffs 0 cells on messages, links, entities, mentions, replies, forwarded, media, parts_unbroken, parts_sentence, parts_paragraph, parts_manifest, relevance_windows; `references` adds 5 rows Go extracts and Python missed (4 `causal`, 1 `method muP`); `windows.ref_count` differs on 15 windows for the same 5 rows
+- DONE 261122 10 S  naming rule recorded in AGENTS.md   evidence: `AGENTS.md` holds the `## Go only` and `## Naming` sections with the prefix rule and 3 worked examples; `grep -rnE '\b(var|tmp|buf|res|val|data|info|obj|item)\b' --include='*.go' .` finds no vague identifier
+
 - DONE 261122 01 M  relevance stage: 3963/3963 answers, 0 fail   evidence: `logs/rel.progress.log` last line `3963/3963 100.0% ok=2 fail=0`
-- DONE 261122 02 S  `data/relevance.csv` built   evidence: `python3 bin/tg_relevance_consensus.py` wrote 31251 vote rows, 10411 consensus rows; verdicts RELEVANT 3759, NOT_RELEVANT 4665, UNSURE 1987
+- DONE 261122 02 S  `data/relevance.csv` built   evidence: `transcriptextraction relevance-consensus` wrote 31251 vote rows, 10411 consensus rows; verdicts RELEVANT 3759, NOT_RELEVANT 4665, UNSURE 1987
 - DONE 261122 03 M  photo stage: 797/797 answers, 0 fail   evidence: `logs/photo.progress.log` last line `797/797 100.0% ok=1 fail=0`
-- DONE 261122 04 S  `data/photo_index.csv` and the photo rows of `data/index.csv`   evidence: `python3 bin/tg_photo_index.py` wrote 797 photo rows; relevance high 340, low 234, none 223
+- DONE 261122 04 S  `data/photo_index.csv` and the photo rows of `data/index.csv`   evidence: `transcriptextraction photo-index` wrote 797 photo rows; relevance high 340, low 234, none 223
 - DONE 261122 05 M  rollup stage: 105/105 answers, 0 fail   evidence: `logs/meta.progress.log` last line `105/105 100.0% ok=105 fail=0`
 - DONE 261122 06 S  index tables rebuilt with the rollup answers   evidence: `data/summary_rollup.csv` 105 rows, `data/index.csv` 26409 rows, `./build.sh` prints `24 csv files checked, 0 bad`
 - DONE 261122 07 S  tables and scripts committed and pushed   evidence: `git log --oneline` prints 932c185
@@ -25,7 +29,7 @@
 - DONE 261122 00 M  rule extraction over every message   evidence: `data/references.csv` 6546 rows over 14 kinds
 - DONE 261122 00 M  w10 summaries: 1042 windows, 1040 ok, 0 fail   evidence: `logs/w10-run.out` last line `done in 3900s: ok=1040 skip=2 fail=0`
 - DONE 261122 00 S  image export complete: 10423 messages, 797 photos, 0 missing files   evidence: `data/photos.csv`
-- DONE 261122 00 M  durable job runner with a progress line every N seconds   evidence: `bin/tg_job.py`, `logs/rel.progress.log`
+- DONE 261122 00 M  durable job runner with a progress line every N seconds   evidence: `internal/durablejob/durablejob.go`, `logs/rel.progress.log`
 - DONE 261122 00 S  repository kcg-ml/kcg-llm.transcript-extraction created and pushed   evidence: `git log --oneline` prints 73cf3f9
 
 ## NOTES
@@ -37,22 +41,23 @@
   Trust the call, not the auth check. Run the job with
   `--provider zai.glm-5.3-flash-128k --model glm-5.3-flash`.
 - The `zai` content filter refuses 1 photo of the 797 with HTTP 400 `code 1301`
-  at full size and passes it at 200 px. `bin/tg_job.py` retries a photo once at
-  200 px through `sips` and writes the copy to `out/jobs/shrunk/`.
+  at full size and passes it at 200 px. `internal/durablejob` retries a photo
+  once at 200 px through `sips` and writes the copy to `out/jobs/shrunk/`.
 - A photo prompt that does not name the answer language gets Chinese or Russian
-  field labels, and `bin/tg_photo_index.py` then parses no field. The prompt now
+  field labels, and `internal/phototable` then parses no field. The prompt now
   states `Write every value in English`. 21 of 797 answers had to be re-run.
 - The rollup prompts `prompts/meta-*.txt` reach the runner only through
-  `data/windows.csv`. `bin/tg_aggregate.py` appends them there, so run
-  `bin/tg_aggregate.py` before `bin/tg_job.py --job meta`.
-- `bin/tg_aggregate.py` rewrites `data/index.csv` and drops the photo rows, so
-  run `bin/tg_photo_index.py` after it. `bin/tg_pipeline.py` already does this.
+  `data/windows.csv`. `internal/summaryaggregation` appends them there, so run
+  `transcriptextraction aggregate` before `transcriptextraction job --job meta`.
+- `transcriptextraction aggregate` rewrites `data/index.csv` and drops the photo
+  rows, so run `transcriptextraction photo-index` after it.
+  `transcriptextraction pipeline` already does this.
 
 - The model name `deepseek-v4.1-flash-1017` matches 9 authenticated providers.
   `pi` then prints `Error: Model ... is ambiguous` on stdout and exits 0, so a
-  runner that trusts the exit code saves the error as an answer. `bin/tg_job.py`
+  runner that trusts the exit code saves the error as an answer. `internal/durablejob`
   names the provider `local-dgx1.deepseek-v4.1-flash-1017-128k` and treats an
   `Error:` first line as a failure.
 - A model call can outlive its timeout when a child holds the pipe open.
-  `bin/tg_job.py` kills the process on timeout instead of waiting.
+  `internal/durablejob` kills the process on timeout instead of waiting.
 - Progress log: `logs/rel.progress.log`. Job answers: `out/jobs/rel/done/`.

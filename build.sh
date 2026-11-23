@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build and check the transcript-extraction pipeline.
 #
-# The pipeline is Python 3 with no third-party package, so a build is 3 checks:
-# every script compiles, every script answers --help, and the CSV tables that
-# exist parse with the column count their header states.
+# The pipeline is Go with no third-party module, so a build is 4 checks: every
+# package compiles, `go vet` finds no defect, every subcommand answers --help,
+# and every CSV table in data/ has the column count its header states.
 #
 # Usage:
 #   ./build.sh              run the checks
@@ -13,9 +13,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON="${PYTHON:-python3}"
-BIN="$ROOT/bin"
+BUILD_FOLDER="$ROOT/.build"
+PIPELINE_BINARY="$BUILD_FOLDER/transcriptextraction"
+CSVCHECK_BINARY="$BUILD_FOLDER/csvcheck"
 GENERATED=(data out prompts logs)
+SUBCOMMAND_LIST=(extract split references windows relevance-windows
+  relevance-solo relevance-consensus photos photo-index aggregate job pipeline)
 
 clean() {
   for folder in "${GENERATED[@]}"; do
@@ -28,19 +31,31 @@ clean() {
 
 check_compile() {
   echo "== compile =="
-  "$PYTHON" -m compileall -q "$BIN" >/dev/null
-  echo "ok: every script in bin/ compiles"
+  mkdir -p "$BUILD_FOLDER"
+  (cd "$ROOT" && go build -o "$PIPELINE_BINARY" ./cmd/transcriptextraction)
+  (cd "$ROOT" && go build -o "$CSVCHECK_BINARY" ./cmd/csvcheck)
+  echo "ok: every package compiles"
+}
+
+check_vet() {
+  echo "== vet =="
+  (cd "$ROOT" && go vet ./...)
+  echo "ok: go vet finds no defect"
 }
 
 check_help() {
   echo "== --help =="
-  for script in "$BIN"/*.py; do
-    if ! "$PYTHON" "$script" --help >/dev/null 2>&1; then
-      echo "FAIL: $script does not answer --help" >&2
+  if ! "$PIPELINE_BINARY" --help >/dev/null 2>&1; then
+    echo "FAIL: transcriptextraction does not answer --help" >&2
+    exit 1
+  fi
+  for subcommand in "${SUBCOMMAND_LIST[@]}"; do
+    if ! "$PIPELINE_BINARY" "$subcommand" --help >/dev/null 2>&1; then
+      echo "FAIL: subcommand $subcommand does not answer --help" >&2
       exit 1
     fi
   done
-  echo "ok: every script in bin/ answers --help"
+  echo "ok: every subcommand answers --help"
 }
 
 check_csv() {
@@ -49,36 +64,7 @@ check_csv() {
     echo "skip: data/ does not exist yet; run ./build.sh --rules to make it"
     return 0
   fi
-  "$PYTHON" - "$ROOT/data" <<'PY'
-import csv, os, sys
-folder = sys.argv[1]
-bad = 0
-count = 0
-for name in sorted(os.listdir(folder)):
-    if not name.endswith(".csv"):
-        continue
-    path = os.path.join(folder, name)
-    with open(path, encoding="utf-8") as f:
-        reader = csv.reader(f)
-        header = next(reader, None)
-        if header is None:
-            print("FAIL: %s is empty" % name, file=sys.stderr)
-            bad += 1
-            continue
-        width = len(header)
-        rows = 0
-        for number, row in enumerate(reader, 2):
-            rows += 1
-            if len(row) != width:
-                print("FAIL: %s line %d has %d fields, header has %d"
-                      % (name, number, len(row), width), file=sys.stderr)
-                bad += 1
-                break
-    count += 1
-    print("ok: %-28s %6d rows, %2d columns" % (name, rows, width))
-print("%d csv files checked, %d bad" % (count, bad))
-sys.exit(1 if bad else 0)
-PY
+  "$CSVCHECK_BINARY" "$ROOT/data"
 }
 
 main() {
@@ -87,11 +73,12 @@ main() {
     shift
   fi
   check_compile
+  check_vet
   check_help
   check_csv
   if [ "${1:-}" = "--rules" ]; then
     echo "== rule stages =="
-    "$PYTHON" "$BIN/tg_pipeline.py" --stage rules
+    "$PIPELINE_BINARY" pipeline --stage rules
   fi
   echo "build ok"
 }

@@ -45,6 +45,8 @@ func main() {
 	}
 	if runError := subcommandFunction(projectFolderPath, argumentList); runError != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", runError)
-		os.Exit(1)
+		// A job ends with a code that says why it stopped, so a script can
+		// tell a lock refusal from a failure. A plain error is exit 1.
+		os.Exit(subcommand.ExitCodeOf(runError))
 	}
 }

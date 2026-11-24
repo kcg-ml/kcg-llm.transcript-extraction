@@ -1,6 +1,7 @@
 package call
 
 import (
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/store"
 	"bytes"
 	"context"
 	"fmt"
@@ -8,9 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
-	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/unit"
 )
 // PiCallResult is the outcome of one model call.
 type PiCallResult struct {
@@ -18,6 +19,18 @@ type PiCallResult struct {
 	StdoutText  string
 	StderrText  string
 	SecondCount float64
+
+	// StallSeconds is how long the output stood still when the call was
+	// killed for a stall, and 0 when the call was not killed for one.
+	StallSeconds float64
+
+	// CharCount is the number of characters the call produced.
+	CharCount int
+}
+
+// IsStall reports whether the call was killed because its output stopped.
+func (callResult PiCallResult) IsStall() bool {
+	return callResult.StallSeconds > 0
 }
 
 // CallPi runs one pi call and returns its outcome.
@@ -25,8 +38,10 @@ type PiCallResult struct {
 // An image path is passed as an `@<path>` argument, which pi turns into an
 // image attachment for a model that accepts image input. A call that outlives
 // its timeout is killed, because a child that holds the pipe open would
-// otherwise keep the call alive past its timeout.
-func CallPi(projectFolderPath string, promptText string, settings unit.JobSettings,
+// otherwise keep the call alive past its timeout. A call whose output stops
+// growing for stallSeconds is killed sooner, because a hung provider would
+// otherwise hold its worker for the whole timeout.
+func CallPi(projectFolderPath string, promptText string, settings store.JobSettings,
 	imageFilePath string) PiCallResult {
 	commandArgumentList := []string{"--print", "--no-tools", "--no-session",
 		"--mode", "text", "--model", settings.ModelName}
@@ -48,35 +63,106 @@ func CallPi(projectFolderPath string, promptText string, settings unit.JobSettin
 	commandHandle := exec.CommandContext(contextHandle, piBinaryName, commandArgumentList...)
 	commandHandle.Dir = projectFolderPath
 	commandHandle.Stdin = strings.NewReader(promptText)
-	stdoutBuffer := bytes.Buffer{}
+	stdoutWatch := NewStallWatchBuffer()
 	stderrBuffer := bytes.Buffer{}
-	commandHandle.Stdout = &stdoutBuffer
+	commandHandle.Stdout = stdoutWatch
 	commandHandle.Stderr = &stderrBuffer
-	runError := commandHandle.Run()
+
+	// The child is a shell script that runs the real process as its own
+	// child. Killing only the child leaves the grandchild holding the stdout
+	// pipe, and Wait then blocks forever on that pipe. The child therefore
+	// gets its own process group, and a kill signals the whole group.
+	commandHandle.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	commandHandle.Cancel = func() error {
+		if commandHandle.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-commandHandle.Process.Pid, syscall.SIGKILL)
+	}
+
+	if startError := commandHandle.Start(); startError != nil {
+		return PiCallResult{
+			ExitCode:    127,
+			StderrText:  startError.Error(),
+			SecondCount: time.Since(startedAt).Seconds(),
+		}
+	}
+
+	// The watcher kills the child when its output stops growing. The wait
+	// goroutine then returns, so the watcher must stop before the buffers
+	// are read.
+	stallSeconds := float64(settings.StallSeconds)
+	stallChannel := make(chan float64, 1)
+	watcherStopChannel := make(chan struct{})
+	watcherDoneChannel := make(chan struct{})
+	go func() {
+		defer close(watcherDoneChannel)
+		if stallSeconds <= 0 {
+			return
+		}
+		tickerHandle := time.NewTicker(500 * time.Millisecond)
+		defer tickerHandle.Stop()
+		for {
+			select {
+			case <-watcherStopChannel:
+				return
+			case <-tickerHandle.C:
+				stoodStillSeconds := stdoutWatch.SecondsSinceGrowth()
+				if stoodStillSeconds >= stallSeconds {
+					stallChannel <- stoodStillSeconds
+					cancelHandle()
+					return
+				}
+			}
+		}
+	}()
+
+	waitError := commandHandle.Wait()
+	close(watcherStopChannel)
+	<-watcherDoneChannel
 	elapsedSeconds := time.Since(startedAt).Seconds()
+	stdoutText := stdoutWatch.Text()
+
+	stallSecondCount := 0.0
+	select {
+	case stallSecondCount = <-stallChannel:
+	default:
+	}
+	if stallSecondCount > 0 {
+		return PiCallResult{
+			ExitCode:     125,
+			StdoutText:   stdoutText,
+			StderrText:   fmt.Sprintf("stall: no output for %.0fs, process killed", stallSecondCount),
+			SecondCount:  elapsedSeconds,
+			StallSeconds: stallSecondCount,
+			CharCount:    len(stdoutText),
+		}
+	}
 
 	if contextHandle.Err() == context.DeadlineExceeded {
 		return PiCallResult{
 			ExitCode:    124,
-			StdoutText:  "",
+			StdoutText:  stdoutText,
 			StderrText:  fmt.Sprintf("timeout after %ds, process killed", settings.TimeoutSeconds),
 			SecondCount: elapsedSeconds,
+			CharCount:   len(stdoutText),
 		}
 	}
 	exitCode := 0
-	if runError != nil {
-		if exitError, isExitError := runError.(*exec.ExitError); isExitError {
+	if waitError != nil {
+		if exitError, isExitError := waitError.(*exec.ExitError); isExitError {
 			exitCode = exitError.ExitCode()
 		} else {
 			exitCode = 127
-			stderrBuffer.WriteString(runError.Error())
+			stderrBuffer.WriteString(waitError.Error())
 		}
 	}
 	return PiCallResult{
 		ExitCode:    exitCode,
-		StdoutText:  stdoutBuffer.String(),
+		StdoutText:  stdoutText,
 		StderrText:  stderrBuffer.String(),
 		SecondCount: elapsedSeconds,
+		CharCount:   len(stdoutText),
 	}
 }
 

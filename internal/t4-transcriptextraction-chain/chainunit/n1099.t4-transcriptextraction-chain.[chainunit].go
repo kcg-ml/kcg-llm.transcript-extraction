@@ -32,6 +32,11 @@ const (
 	// JobNamePhotoContent answers with what 1 photo shows, the text inside
 	// it, its topic, its relevance, the numbers it states, and its terms.
 	JobNamePhotoContent = "photo-content"
+
+	// JobNameIdeaExtraction answers with the papers, talks, repositories,
+	// methods, and models that 10 consecutive messages name, each with the
+	// message id it came from.
+	JobNameIdeaExtraction = "idea-extraction"
 )
 
 // JobNameList names the jobs the runner accepts, in the order a reader runs
@@ -44,4 +49,5 @@ var JobNameList = []string{
 	JobNameSummaryWindowOfWholeChat,
 	JobNameRelevanceWindowVote,
 	JobNamePhotoContent,
+	JobNameIdeaExtraction,
 }

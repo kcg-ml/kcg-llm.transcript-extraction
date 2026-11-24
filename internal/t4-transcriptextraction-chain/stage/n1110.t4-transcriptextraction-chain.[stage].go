@@ -1,12 +1,12 @@
 package stage
 
 import (
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/store"
 	"fmt"
 	"time"
 
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t4-transcriptextraction-chain/chainunit"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/run"
-	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/unit"
 )
 // TextExportFolderName is the folder of the export that holds text only.
 const TextExportFolderName = "extract.telegram-log.vlad"
@@ -23,7 +23,7 @@ var StageNameList = []string{"extract", "split", "references", "windows",
 type ChainSettings struct {
 	ProjectFolderPath  string
 	StageName          string
-	JobSettings        unit.JobSettings
+	JobSettings        store.JobSettings
 	VisionModelName    string
 	VisionProviderName string
 	RunModelStages     bool

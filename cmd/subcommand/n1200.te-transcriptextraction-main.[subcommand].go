@@ -1,6 +1,7 @@
 package subcommand
 
 import (
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/store"
 	"flag"
 	"fmt"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-relevance/consensus"
 	aggregateindex "github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-aggregate/index"
 	photoindex "github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-photo/index"
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-idea/ideaparse"
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-idea/ideaprompt"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t1-transcriptextraction-split/part"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-summary/prompt"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-relevance/relprompt"
@@ -19,7 +22,6 @@ import (
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-relevance/solo"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t4-transcriptextraction-chain/stage"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-photo/table"
-	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/unit"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t1-transcriptextraction-export/write"
 )
 // DefaultModelName is the model a job calls when the operator names none.
@@ -50,6 +52,8 @@ Subcommands:
   relevance-consensus  turn the 3 votes per message into 1 verdict
   photos               read the image export and write one prompt per photo
   photo-index          join the photo answers into data/index.csv
+  idea-windows         build the phase 1 idea-extraction windows and prompts
+  idea-index           turn the idea answers into data/idea_items.csv
   aggregate            turn the model answers into the summary and index tables
   job                  run one durable model job, with a progress line
   pipeline             run the whole chain in order
@@ -140,6 +144,20 @@ func RunPhotoIndex(projectFolderPath string, argumentList []string) error {
 	return photoindex.Run(projectFolderPath)
 }
 
+// RunIdeaWindows runs the phase 1 idea-extraction window stage.
+func RunIdeaWindows(projectFolderPath string, argumentList []string) error {
+	flagSet := flag.NewFlagSet("idea-windows", flag.ExitOnError)
+	flagSet.Parse(argumentList)
+	return ideaprompt.Run(projectFolderPath)
+}
+
+// RunIdeaIndex turns the idea answers into data/idea_items.csv.
+func RunIdeaIndex(projectFolderPath string, argumentList []string) error {
+	flagSet := flag.NewFlagSet("idea-index", flag.ExitOnError)
+	flagSet.Parse(argumentList)
+	return ideaparse.Run(projectFolderPath)
+}
+
 // RunAggregate runs the aggregation stage.
 func RunAggregate(projectFolderPath string, argumentList []string) error {
 	flagSet := flag.NewFlagSet("aggregate", flag.ExitOnError)
@@ -148,18 +166,22 @@ func RunAggregate(projectFolderPath string, argumentList []string) error {
 }
 
 // AddJobFlags adds the flags every job shares to a flag set.
-func AddJobFlags(flagSet *flag.FlagSet, settings *unit.JobSettings) {
+func AddJobFlags(flagSet *flag.FlagSet, settings *store.JobSettings) {
 	flagSet.IntVar(&settings.WorkerCount, "jobs", 8, "number of calls in flight")
 	flagSet.IntVar(&settings.PollSeconds, "poll", 30,
 		"seconds between progress lines")
 	flagSet.StringVar(&settings.ModelName, "model", DefaultModelName, "model name")
 	flagSet.StringVar(&settings.ProviderName, "provider", DefaultProviderName,
 		"provider name; a bare model name is ambiguous across providers")
-	flagSet.IntVar(&settings.TimeoutSeconds, "timeout", 600,
-		"seconds before one call is killed")
+	flagSet.IntVar(&settings.TimeoutSeconds, "timeout", 0,
+		"seconds before one call is killed; 0 uses the bound measured for the job")
 	flagSet.IntVar(&settings.RetryCount, "retries", 2, "retries of one unit")
 	flagSet.IntVar(&settings.RetrySleepSeconds, "retry-sleep", 5,
 		"seconds between retries")
+	flagSet.IntVar(&settings.StallSeconds, "stall", 90,
+		"seconds a call may go without growing its output before it is killed")
+	flagSet.BoolVar(&settings.ProbeOnly, "probe", false,
+		"make one call on the first pending unit and print its rate, saving no answer")
 	flagSet.IntVar(&settings.UnitLimit, "limit", 0,
 		"stop after this many units; 0 runs every unit")
 	flagSet.BoolVar(&settings.PrintStatusOnly, "status", false,
@@ -173,7 +195,7 @@ func RunJob(projectFolderPath string, argumentList []string) error {
 	flagSet := flag.NewFlagSet("job", flag.ExitOnError)
 	jobName := flagSet.String("job", "",
 		"job name: "+strings.Join(chainunit.JobNameList, ", "))
-	settings := unit.JobSettings{}
+	settings := store.JobSettings{}
 	AddJobFlags(flagSet, &settings)
 	flagSet.Parse(argumentList)
 	if *jobName == "" {
@@ -187,6 +209,9 @@ func RunJob(projectFolderPath string, argumentList []string) error {
 		return unitError
 	}
 	settings.JobName = *jobName
+	if settings.TimeoutSeconds == 0 {
+		settings.TimeoutSeconds = chainunit.TimeoutSecondsOf(*jobName)
+	}
 	exitCode := run.Run(projectFolderPath, settings, unitList)
 	if exitCode != 0 {
 		return fmt.Errorf("job %s exited with code %d", *jobName, exitCode)
@@ -207,7 +232,7 @@ func RunPipeline(projectFolderPath string, argumentList []string) error {
 		"a model that accepts image input, for the photo job")
 	visionProviderName := flagSet.String("vision-provider", "",
 		"provider of the vision model")
-	settings := unit.JobSettings{}
+	settings := store.JobSettings{}
 	AddJobFlags(flagSet, &settings)
 	flagSet.Parse(argumentList)
 

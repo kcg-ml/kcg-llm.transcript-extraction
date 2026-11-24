@@ -1,4 +1,4 @@
-package progress
+package run
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/store"
-	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/unit"
 )
 // RunCounters holds the live counts of one run.
 type RunCounters struct {
@@ -17,7 +16,16 @@ type RunCounters struct {
 	lastUnitId       string
 	lastSecondCount  float64
 	totalSecondCount float64
+
+	// finishTimeList holds when the last answers finished, newest last, so
+	// the rate covers a sliding window instead of the whole run. A rate over
+	// the whole run hides a stall: 1000 answers in 10 minutes still read as
+	// 1.7/s during the 5 minutes the provider has been silent.
+	finishTimeList []time.Time
 }
+
+// rateWindowSeconds is the span the progress rate covers.
+const rateWindowSeconds = 60.0
 
 // AddOk records a finished unit.
 func (counters *RunCounters) AddOk(unitId string, secondCount float64) {
@@ -27,6 +35,42 @@ func (counters *RunCounters) AddOk(unitId string, secondCount float64) {
 	counters.lastUnitId = unitId
 	counters.lastSecondCount = secondCount
 	counters.totalSecondCount += secondCount
+	counters.finishTimeList = append(counters.finishTimeList, time.Now())
+	counters.dropOldFinishTimes()
+}
+
+// dropOldFinishTimes removes the finish times outside the rate window.
+//
+// The caller holds the lock. The list is kept in order, so the stale times
+// are always at the front and the cut is one slice operation.
+func (counters *RunCounters) dropOldFinishTimes() {
+	windowStartTime := time.Now().Add(-time.Duration(rateWindowSeconds * float64(time.Second)))
+	cutIndex := 0
+	for cutIndex < len(counters.finishTimeList) &&
+		counters.finishTimeList[cutIndex].Before(windowStartTime) {
+		cutIndex++
+	}
+	if cutIndex > 0 {
+		counters.finishTimeList = counters.finishTimeList[cutIndex:]
+	}
+}
+
+// RecentRatePerSecond returns the answers per second over the rate window.
+func (counters *RunCounters) RecentRatePerSecond() float64 {
+	counters.lockHandle.Lock()
+	defer counters.lockHandle.Unlock()
+	counters.dropOldFinishTimes()
+	if len(counters.finishTimeList) == 0 {
+		return 0
+	}
+	// The span runs from the oldest answer in the window to now, so a run
+	// that has just started reports its true rate instead of dividing by a
+	// window it has not filled.
+	spanSeconds := time.Since(counters.finishTimeList[0]).Seconds()
+	if spanSeconds < 1 {
+		spanSeconds = 1
+	}
+	return float64(len(counters.finishTimeList)) / spanSeconds
 }
 
 // AddFail records a failed unit.
@@ -53,8 +97,8 @@ func (counters *RunCounters) snapshot() (int, int, string, float64) {
 		counters.lastSecondCount
 }
 
-// formatEtaText writes a duration as `12m03s` or `2h05m`.
-func formatEtaText(secondCount float64) string {
+// FormatEtaText writes a duration as `12m03s` or `2h05m`.
+func FormatEtaText(secondCount float64) string {
 	if secondCount <= 0 {
 		return "--"
 	}
@@ -66,19 +110,17 @@ func formatEtaText(secondCount float64) string {
 }
 
 // ProgressLineOf returns the one-line progress report.
-func ProgressLineOf(store *store.JobStore, unitList []unit.JobUnit, counters *RunCounters,
-	startedAt time.Time) string {
+//
+// The rate and the ETA cover the last 60 seconds, so a stalled run shows its
+// rate falling to 0 and its ETA growing, which is what a reader needs to see.
+// The failed count is on the line, because a run that answers 200 units and
+// fails 200 is not half done.
+func ProgressLineOf(store *store.JobStore, unitList []store.JobUnit,
+	counters *RunCounters) string {
 	totalCount := len(unitList)
 	doneCount, failedCount := store.Counts(unitList)
-	elapsedSeconds := time.Since(startedAt).Seconds()
-	if elapsedSeconds < 0.001 {
-		elapsedSeconds = 0.001
-	}
 	okCount, inFlightCount, lastUnitId, lastSecondCount := counters.snapshot()
-	ratePerSecond := 0.0
-	if okCount > 0 {
-		ratePerSecond = float64(okCount) / elapsedSeconds
-	}
+	ratePerSecond := counters.RecentRatePerSecond()
 	remainingCount := totalCount - doneCount
 	etaSecondCount := 0.0
 	if ratePerSecond > 0 {
@@ -94,7 +136,7 @@ func ProgressLineOf(store *store.JobStore, unitList []unit.JobUnit, counters *Ru
 	}
 	return fmt.Sprintf("[%s] %d/%d  %5.1f%%  ok=%d fail=%d  rate=%.2f/s  eta=%s  inflight=%d  last=%s",
 		time.Now().Format("15:04:05"), doneCount, totalCount, percentValue,
-		okCount, failedCount, ratePerSecond, formatEtaText(etaSecondCount),
+		okCount, failedCount, ratePerSecond, FormatEtaText(etaSecondCount),
 		inFlightCount, lastText)
 }
 

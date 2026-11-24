@@ -71,21 +71,80 @@ func TimeoutSecondsOf(jobName string) int {
 	}
 	return 0
 }
-// StallSecondsOf returns the stall bound of one job.
+// The stall bound of one call, per job.
 //
-// The provider this pipeline uses does not stream: it holds the whole answer
-// and writes it at the end. A measured 181224-char prompt answered in 315.0s
-// with its first byte at 313.0s, so a call that has written nothing for 90s
-// may still be thinking and must not be killed.
+// A stall bound answers a different question from the timeout: the timeout
+// asks whether the call has taken too long in total, and the stall bound asks
+// whether the call has stopped producing. The provider this pipeline uses
+// does not stream: it holds the whole answer and writes it at the end, and a
+// measured 181224-char prompt answered in 315.0s with its first byte at
+// 313.0s. So the time before the first byte is the provider thinking, and a
+// bound under that time kills a healthy call.
 //
-// The bound is therefore 2 x the job's timeout, which is above the slowest
-// measured time-to-first-byte of every job, and a call that writes nothing
-// for that long is hung rather than slow. A job with no measured calls takes
-// the same rule from its borrowed timeout.
+// Each bound below is the larger of 90s and 15% above the slowest measured
+// call of its job, so a healthy call never reaches it. Each bound is also
+// under the job's timeout, so a call that stops producing is killed as a
+// stall and not as a timeout, and the failure says which.
+const (
+	// StallSecondsMessageTranslation is above the slowest of 284 calls,
+	// 46.9s, and under the 145s timeout.
+	StallSecondsMessageTranslation = 90
+
+	// StallSecondsSummaryWindowOf10Messages is 15% above the slowest of
+	// 1042 calls, 209.3s, and under the 483s timeout.
+	StallSecondsSummaryWindowOf10Messages = 241
+
+	// StallSecondsSummaryWindowOf100Messages is 15% above the slowest of
+	// 105 calls, 380.1s, and under the 1206s timeout.
+	StallSecondsSummaryWindowOf100Messages = 438
+
+	// StallSecondsSummaryWindowOfOneMonth is 15% above the slowest of 13
+	// calls, 475.3s, and under the 1901s timeout.
+	StallSecondsSummaryWindowOfOneMonth = 547
+
+	// StallSecondsSummaryWindowOfWholeChat is 15% above the slowest of 29
+	// calls, 547.6s, and under the 2015s timeout.
+	StallSecondsSummaryWindowOfWholeChat = 630
+
+	// StallSecondsRelevanceWindowVote is 205s, between the slowest of 2862
+	// calls, 200.7s, and the 212s timeout.
+	//
+	// The margin is narrow because this job's slowest healthy call is close
+	// to its timeout: the timeout is 4 x the 53.0s p95, and 3 calls of 2862
+	// ran past 190s. A bound of 15% above the slowest call would be 231s,
+	// which is above the timeout, so the timeout would kill first and the
+	// stall rule would never fire. 205s keeps both rules live, and the 4.3s
+	// of margin under the slowest call is the price of that.
+	StallSecondsRelevanceWindowVote = 205
+
+	// StallSecondsPhotoContent is 15% above the slowest of 797 calls,
+	// 84.0s, and under the 173s timeout.
+	StallSecondsPhotoContent = 97
+
+	// StallSecondsIdeaExtraction is the 90s floor. This job has 5 measured
+	// calls, the slowest 8.3s, so no measured call comes near the floor.
+	StallSecondsIdeaExtraction = 90
+)
+
+// StallSecondsOf returns the stall bound of one job, or 0 for an unknown job.
 func StallSecondsOf(jobName string) int {
-	timeoutSeconds := TimeoutSecondsOf(jobName)
-	if timeoutSeconds <= 0 {
-		return 0
+	switch jobName {
+	case JobNameMessageTranslation:
+		return StallSecondsMessageTranslation
+	case JobNameSummaryWindowOf10Messages:
+		return StallSecondsSummaryWindowOf10Messages
+	case JobNameSummaryWindowOf100Messages:
+		return StallSecondsSummaryWindowOf100Messages
+	case JobNameSummaryWindowOfOneMonth:
+		return StallSecondsSummaryWindowOfOneMonth
+	case JobNameSummaryWindowOfWholeChat:
+		return StallSecondsSummaryWindowOfWholeChat
+	case JobNameRelevanceWindowVote:
+		return StallSecondsRelevanceWindowVote
+	case JobNamePhotoContent:
+		return StallSecondsPhotoContent
+	case JobNameIdeaExtraction:
+		return StallSecondsIdeaExtraction
 	}
-	return 2 * timeoutSeconds
+	return 0
 }

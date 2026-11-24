@@ -62,6 +62,8 @@ that project is a sub-folder. There is no Python in this repository.
 | `t2-...-relevance/consensus` | `model-answer/job/relevance-window-vote/done/` | `data/relevance_votes.csv`, `data/relevance.csv` |
 | `t2-...-photo/table` | `extract.telegram-log.vlad-images/result.json` | `data/photos.csv`, `prompts/photo-content-*.txt` |
 | `t2-...-photo/index` | `model-answer/job/photo-content/done/` | `data/photo_index.csv`, the photo rows of `data/index.csv` |
+| `t2-...-idea/ideaprompt` | `data/messages.csv`, `data/summaries.csv` | `prompts/idea-extraction-*.txt` |
+| `t2-...-idea/ideaparse` | `model-answer/job/idea-extraction/done/` | `data/idea_windows.csv`, `data/idea_items.csv` |
 | `t2-...-aggregate/index` | `model-answer/` | `data/summaries.csv`, `data/summary_items.csv`, `data/summary_rollup.csv`, `data/index*.csv`, `prompts/summary-window-of-whole-chat-*.txt` |
 | `t3-...-job/run` | `prompts/`, `data/photos.csv` | `model-answer/job/<job>/done/<id>.txt`, `logs/<job>.progress.log` |
 | `t4-...-chain/chainunit` | `data/` | the unit list of one durable job |
@@ -108,7 +110,7 @@ A model stage runs through `transcriptextraction job`, which is durable:
 .build/transcriptextraction job --job relevance-window-vote --status
 ```
 
-The 7 job names, and what one answer of each holds:
+The 8 job names, and what one answer of each holds:
 
 | job name | one answer holds |
 | --- | --- |
@@ -119,6 +121,7 @@ The 7 job names, and what one answer of each holds:
 | `summary-window-of-whole-chat` | the 14-field summary of the whole chat, rolled up from the months |
 | `relevance-window-vote` | 1 vote on whether a window of messages is relevant to machine learning |
 | `photo-content` | what 1 photo shows, its text, topic, relevance, numbers, and terms |
+| `idea-extraction` | the phase 1 fields of 1 window: `PAPERS`, `TALKS`, `CODE`, `METHODS`, `MODELS`, each with its message id |
 
 A job name is also the `window_kind` value of `data/windows.csv` and the
 prefix of a `window_id`, so the 3 agree by construction. The constants sit in

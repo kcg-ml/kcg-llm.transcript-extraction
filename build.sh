@@ -16,7 +16,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_FOLDER="$ROOT/.build"
 PIPELINE_BINARY="$BUILD_FOLDER/transcriptextraction"
 CSVCHECK_BINARY="$BUILD_FOLDER/csvcheck"
-GENERATED=(data out prompts logs)
+GENERATED=(data model-answer prompts logs)
 SUBCOMMAND_LIST=(extract split references windows relevance-windows
   relevance-solo relevance-consensus photos photo-index aggregate job pipeline)
 

@@ -4,7 +4,8 @@ import (
 	"os"
 	"path/filepath"
 )
-// ProjectFolderPath returns the folder that holds data/, prompts/, out/, and
+// ProjectFolderPath returns the folder that holds data/, prompts/,
+// model-answer/, and
 // logs/. The stages run from the repository root, so the working folder is the
 // project folder, unless the operator names another one in the environment
 // variable TRANSCRIPTEXTRACTION_PROJECT_FOLDER.

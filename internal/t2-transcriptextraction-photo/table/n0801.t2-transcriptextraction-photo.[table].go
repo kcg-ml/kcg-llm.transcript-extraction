@@ -147,7 +147,7 @@ func Run(projectFolderPath string, imageExportFolderName string, forceRewrite bo
 			"reply_to_message_id": replyToMessageIdText,
 			"forwarded_from":      message.ForwardedFrom,
 			"prompt_path":         table.RelativePath(projectFolderPath, promptFilePath),
-			"answer_path":         "out/" + photoKey + ".txt",
+			"answer_path":         "model-answer/job/photo-content/done/" + photoKey + ".txt",
 		})
 	}
 

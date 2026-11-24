@@ -32,6 +32,8 @@ func main() {
 		"relevance-consensus": subcommand.RunRelevanceConsensus,
 		"photos":              subcommand.RunPhotos,
 		"photo-index":         subcommand.RunPhotoIndex,
+		"idea-windows":        subcommand.RunIdeaWindows,
+		"idea-index":          subcommand.RunIdeaIndex,
 		"aggregate":           subcommand.RunAggregate,
 		"job":                 subcommand.RunJob,
 		"pipeline":            subcommand.RunPipeline,

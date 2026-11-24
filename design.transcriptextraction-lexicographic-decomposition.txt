@@ -298,13 +298,18 @@ that imports a second file of the same group takes a higher number.
     t2-transcriptextraction-aggregate/parse/n0901.t2-transcriptextraction-aggregate.[parse].go      n0900
     t2-transcriptextraction-aggregate/rollup/n0910.t2-transcriptextraction-aggregate.[rollup].go    n0900
     t2-transcriptextraction-aggregate/index/n0920.t2-transcriptextraction-aggregate.[index].go      n0900
-    t3-transcriptextraction-job/unit/n1000.t3-transcriptextraction-job.[unit].go                    (nothing)
-    t3-transcriptextraction-job/unit/n1001.t3-transcriptextraction-job.[unit].go                    n1000
+    t3-transcriptextraction-job/store/n1000.t3-transcriptextraction-job.[store].go                  (nothing)
+    t3-transcriptextraction-job/store/n1001.t3-transcriptextraction-job.[store].go                  n1000
+    t3-transcriptextraction-job/store/n1002.t3-transcriptextraction-job.[store].go                  n1000, n1001
     t3-transcriptextraction-job/store/n1010.t3-transcriptextraction-job.[store].go                  n1000
+    t3-transcriptextraction-job/store/n1012.t3-transcriptextraction-job.[store].go                  n1010
     t3-transcriptextraction-job/call/n1020.t3-transcriptextraction-job.[call].go                    n1000
+    t3-transcriptextraction-job/call/n1021.t3-transcriptextraction-job.[call].go                    (nothing)
     t3-transcriptextraction-job/answer/n1030.t3-transcriptextraction-job.[answer].go                (nothing)
-    t3-transcriptextraction-job/progress/n1040.t3-transcriptextraction-job.[progress].go            n1000, n1010
-    t3-transcriptextraction-job/run/n1050.t3-transcriptextraction-job.[run].go                      n1000 to n1040
+    t3-transcriptextraction-job/run/n1040.t3-transcriptextraction-job.[run].go                      n1000, n1010
+    t3-transcriptextraction-job/run/n1041.t3-transcriptextraction-job.[run].go                      n1010
+    t3-transcriptextraction-job/run/n1050.t3-transcriptextraction-job.[run].go                      n1000 to n1041
+    t3-transcriptextraction-job/lock/n1060.t3-transcriptextraction-job.[lock].go                    (nothing)
     t4-transcriptextraction-chain/chainunit/n1100.t4-transcriptextraction-chain.[chainunit].go      (nothing)
     t4-transcriptextraction-chain/stage/n1110.t4-transcriptextraction-chain.[stage].go              (nothing)
     t4-transcriptextraction-chain/chainrun/n1120.t4-transcriptextraction-chain.[chainrun].go        n1100, n1110
@@ -325,8 +330,8 @@ both be imported by 1 file:
                                summary and `t2-...-relevance/prompt` holds
                                RenderPrompt for a relevance vote
     prompt       photoprompt   `t2-...-photo/prompt` holds the photo prompt
-    unit         chainunit     `t3-...-job/unit` holds JobUnit and
-                               `t4-...-chain/unit` holds UnitListOf
+    unit         chainunit     `t3-...-job/store` holds JobUnit and
+                               `t4-...-chain/chainunit` holds UnitListOf
     run          chainrun      `t3-...-job/run` holds Run for a job and
                                `t4-...-chain/run` holds Run for the chain
 
@@ -465,11 +470,11 @@ block per file.
                                             t2-transcriptextraction-aggregate/parse/n0900.t2-transcriptextraction-aggregate.[parse].go
                                             t2-transcriptextraction-aggregate/rollup/n0910.t2-transcriptextraction-aggregate.[rollup].go
                                             t2-transcriptextraction-aggregate/index/n0920.t2-transcriptextraction-aggregate.[index].go
-    internal/durablejob/durablejob.go       t3-transcriptextraction-job/unit/n1000.t3-transcriptextraction-job.[unit].go
+    internal/durablejob/durablejob.go       t3-transcriptextraction-job/store/n1000.t3-transcriptextraction-job.[store].go
                                             t3-transcriptextraction-job/store/n1010.t3-transcriptextraction-job.[store].go
                                             t3-transcriptextraction-job/call/n1020.t3-transcriptextraction-job.[call].go
                                             t3-transcriptextraction-job/answer/n1030.t3-transcriptextraction-job.[answer].go
-                                            t3-transcriptextraction-job/progress/n1040.t3-transcriptextraction-job.[progress].go
+                                            t3-transcriptextraction-job/run/n1040.t3-transcriptextraction-job.[run].go
                                             t3-transcriptextraction-job/run/n1050.t3-transcriptextraction-job.[run].go
     internal/jobunit/jobunit.go             t4-transcriptextraction-chain/chainunit/n1100.t4-transcriptextraction-chain.[chainunit].go
     internal/pipelinechain/pipelinechain.go t4-transcriptextraction-chain/stage/n1110.t4-transcriptextraction-chain.[stage].go
@@ -520,14 +525,13 @@ This section shows the numbering rule of section 6 on 1 project, so a reader
 can check the rule against a real folder.
 
 The project `t3-transcriptextraction-job` owns the block `n1000` to `n1099`.
-Its 6 groups take 6 blocks of 10 numbers:
+Its 5 groups take 5 blocks of 10 numbers:
 
-    .unit      n1000   n1000.t3-transcriptextraction-job.[unit].go
-    .store     n1010   n1010.t3-transcriptextraction-job.[store].go
+    .store     n1000   n1000.t3-transcriptextraction-job.[store].go
     .call      n1020   n1020.t3-transcriptextraction-job.[call].go
     .answer    n1030   n1030.t3-transcriptextraction-job.[answer].go
-    .progress  n1040   n1040.t3-transcriptextraction-job.[progress].go
-    .run       n1050   n1050.t3-transcriptextraction-job.[run].go
+    .run       n1040   n1040.t3-transcriptextraction-job.[run].go
+    .lock      n1060   n1060.t3-transcriptextraction-job.[lock].go
 
 The numbers `n1001` to `n1009`, `n1011` to `n1019`, and the rest of each block
 stay free, so a later file takes the next free number of its block and no file

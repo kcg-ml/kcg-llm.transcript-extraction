@@ -1,0 +1,58 @@
+# Phase 1 of the idea extraction: what it is and what it measured
+
+Date: 2026-11-24
+
+## What it is
+
+Phase 1 extracts 5 of the 14 summary fields into their own table, with the
+message id beside every item: PAPERS, TALKS, CODE, METHODS, MODELS.
+
+The 5 fields name a thing a reader can look up. The other 9 fields need the
+whole argument of a window, so a later phase takes them.
+
+| piece | path |
+| --- | --- |
+| prompt and window table | `internal/t2-transcriptextraction-idea/ideaprompt/` |
+| answer parser and item table | `internal/t2-transcriptextraction-idea/ideaparse/` |
+| job name | `chainunit.JobNameIdeaExtraction` = `idea-extraction` |
+| timeout | `chainunit.TimeoutSecondsIdeaExtraction` = 483s |
+| subcommands | `idea-windows`, `idea-index` |
+| window table | `data/idea_windows.csv`, 1042 rows |
+| item table | `data/idea_items.csv` |
+| prompts | `prompts/idea-extraction-<window_id>.txt` |
+| answers | `model-answer/job/idea-extraction/done/<window_id>.txt` |
+
+## The prompt file name carries the prefix
+
+The idea prompt is `prompts/idea-extraction-<window_id>.txt`, not
+`prompts/<window_id>.txt`. Both this stage and the summary stage read the same
+10-message windows, so a shared file name lets one stage overwrite the other's
+prompt. The first version of this stage did exactly that and destroyed 1042
+summary prompts; `transcriptextraction windows` restored them, and `git status
+prompts/` then showed no change.
+
+## Measured on 5 windows
+
+| measure | value |
+| --- | --- |
+| probe, 1 call | 10.8s, 1388 chars, 128.9 chars/s |
+| 5-window sample | 5 of 5 ok, 0 failed, 9.5s for the last answer |
+| items from 5 windows | 19 rows, every row carries a message key |
+
+The 19 rows split as METHODS 11, TALKS 4, PAPERS 3, MODELS 1, CODE 0.
+
+## The timeout is an estimate, not a measurement
+
+`TimeoutSecondsIdeaExtraction` is 483s, taken from the
+summary-window-of-10-messages p95 of 121s. This job has no measured calls yet,
+so the bound is borrowed from the job that reads the same 10 messages and
+writes a longer answer. A measured p95 replaces it after the first full run.
+
+## The 6 prompts that still hold Cyrillic
+
+6 of the 1042 idea prompts hold Cyrillic letters after the translation stage.
+Each one is a case the translation stage accepts: a 2-letter fragment (`Уе`,
+`Гр`), a Russian name inside an English sentence (`Subbotniks (Russian:
+Субботники, IPA:`), an English sentence that quotes a Russian example, and a
+Telegram hashtag (`#обзор@UAVDEV`). No prompt holds an untranslated Russian
+sentence.

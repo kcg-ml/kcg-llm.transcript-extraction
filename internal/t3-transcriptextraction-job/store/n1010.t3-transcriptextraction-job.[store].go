@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t3-transcriptextraction-job/unit"
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t0-transcriptextraction-table/pattern"
 )
 // JobStore is the on-disk record of one job.
 type JobStore struct {
@@ -17,6 +18,7 @@ type JobStore struct {
 	DoneFolderPath   string
 	FailedFolderPath string
 	StateFilePath    string
+	ErrorLogFilePath string
 	stateLock        sync.Mutex
 }
 
@@ -29,8 +31,10 @@ func NewJobStore(projectFolderPath string, jobName string) (*JobStore, error) {
 		DoneFolderPath:   filepath.Join(jobFolderPath, "done"),
 		FailedFolderPath: filepath.Join(jobFolderPath, "failed"),
 		StateFilePath:    filepath.Join(jobFolderPath, "state.jsonl"),
+		ErrorLogFilePath: filepath.Join(projectFolderPath, "logs", jobName+".errors.log"),
 	}
-	for _, folderPath := range []string{store.DoneFolderPath, store.FailedFolderPath} {
+	for _, folderPath := range []string{store.DoneFolderPath, store.FailedFolderPath,
+		filepath.Dir(store.ErrorLogFilePath)} {
 		if createError := os.MkdirAll(folderPath, 0o755); createError != nil {
 			return nil, fmt.Errorf("cannot create %s: %w", folderPath, createError)
 		}
@@ -75,7 +79,7 @@ func (store *JobStore) WriteDone(unitId string, answerText string, stateFields m
 	return nil
 }
 
-// WriteFailed writes the failure file and the state line.
+// WriteFailed writes the failure file, the state line, and the error log line.
 func (store *JobStore) WriteFailed(unitId string, errorText string, stateFields map[string]any) error {
 	failureRecord := map[string]any{"unit_id": unitId, "error": errorText}
 	for fieldName, fieldValue := range stateFields {
@@ -90,7 +94,41 @@ func (store *JobStore) WriteFailed(unitId string, errorText string, stateFields 
 		return fmt.Errorf("cannot write %s: %w", failedFilePath, writeError)
 	}
 	store.appendStateLine(unitId, "fail", stateFields)
+	store.appendErrorLogLine(unitId, errorText, stateFields)
 	return nil
+}
+
+// appendErrorLogLine adds one line to `logs/<job>.errors.log`.
+//
+// The failure file holds the whole record, but a reader who wants every
+// failure of a run reads one file, so each failure also writes one line here.
+func (store *JobStore) appendErrorLogLine(unitId string, errorText string,
+	stateFields map[string]any) {
+	reasonText := strings.ReplaceAll(errorText, "\n", " ")
+	reasonText = pattern.CutRuneText(reasonText, 300)
+	logLine := fmt.Sprintf("%s  unit=%s  attempt=%s  exit=%s  seconds=%s  chars=%s  reason=%s\n",
+		time.Now().Format("2006-01-02T15:04:05"), unitId,
+		fieldTextOf(stateFields, "attempt"), fieldTextOf(stateFields, "code"),
+		fieldTextOf(stateFields, "seconds"), fieldTextOf(stateFields, "chars"),
+		reasonText)
+	store.stateLock.Lock()
+	defer store.stateLock.Unlock()
+	fileHandle, openError := os.OpenFile(store.ErrorLogFilePath,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if openError != nil {
+		return
+	}
+	defer fileHandle.Close()
+	fileHandle.WriteString(logLine)
+}
+
+// fieldTextOf writes one state field as text, or `-` when it is absent.
+func fieldTextOf(stateFields map[string]any, fieldName string) string {
+	fieldValue, fieldFound := stateFields[fieldName]
+	if !fieldFound {
+		return "-"
+	}
+	return fmt.Sprintf("%v", fieldValue)
 }
 
 // appendStateLine adds one line to state.jsonl.
@@ -123,15 +161,37 @@ func (store *JobStore) ClearFailed(unitId string) {
 	os.Remove(store.FailedFilePath(unitId))
 }
 
+// FailureReasonOf returns the reason text of one failed unit, shortened to the
+// part before the first newline so it fits on one summary line.
+func (store *JobStore) FailureReasonOf(unitId string) string {
+	failedBytes, readError := os.ReadFile(store.FailedFilePath(unitId))
+	if readError != nil {
+		return "unreadable failure file"
+	}
+	failureRecord := map[string]any{}
+	if decodeError := json.Unmarshal(failedBytes, &failureRecord); decodeError != nil {
+		return "unreadable failure record"
+	}
+	reasonValue, reasonFound := failureRecord["error"]
+	if !reasonFound {
+		return "no reason recorded"
+	}
+	reasonText := fmt.Sprintf("%v", reasonValue)
+	if newlineIndex := strings.Index(reasonText, "\n"); newlineIndex >= 0 {
+		reasonText = reasonText[:newlineIndex]
+	}
+	return pattern.CutRuneText(reasonText, 120)
+}
+
 // Counts returns the done and failed counts of a unit list.
-func (store *JobStore) Counts(unitList []unit.JobUnit) (int, int) {
+func (store *JobStore) Counts(unitList []JobUnit) (int, int) {
 	doneCount := 0
 	failedCount := 0
-	for _, unit := range unitList {
-		if store.IsDone(unit.UnitId) {
+	for _, jobUnit := range unitList {
+		if store.IsDone(jobUnit.UnitId) {
 			doneCount++
 		}
-		if store.IsFailed(unit.UnitId) {
+		if store.IsFailed(jobUnit.UnitId) {
 			failedCount++
 		}
 	}

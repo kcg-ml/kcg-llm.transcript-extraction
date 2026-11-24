@@ -1,0 +1,25 @@
+Reviewed-by: sp 261124
+t0-transcriptextraction-table
+  holds the CSV table and the text rules that every other project calls
+t1-transcriptextraction-export
+  holds the Telegram export read and the 6 side tables of data/messages.csv
+t1-transcriptextraction-split
+  holds the 3 split modes and the 3 part tables
+t1-transcriptextraction-reference
+  holds the 14 reference kinds and the rule extraction over every message
+t1-transcriptextraction-translate
+  holds the English text of a Cyrillic message, and the table that keeps it
+t2-transcriptextraction-summary
+  holds the summary windows and the prompt of each window
+t2-transcriptextraction-relevance
+  holds the relevance windows, the solo vote, and the 3-vote consensus
+t2-transcriptextraction-photo
+  holds the photo table, the photo prompt, and the photo index
+t2-transcriptextraction-aggregate
+  holds the summary parse, the rollup prompt, and the index tables
+t3-transcriptextraction-job
+  holds the durable job: the unit, the store, the pi call, and the progress line
+t4-transcriptextraction-chain
+  holds the unit list of each job and the stage chain
+te-transcriptextraction-main
+  the 12 subcommands and the 2 commands

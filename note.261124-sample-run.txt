@@ -1,0 +1,43 @@
+Sample end-to-end run, 2026-11-24
+=================================
+
+What ran, and what it proved.
+
+    stage              units   result
+    -----------------  ------  ------------------------------------------
+    translate          254/254 fail=0  data/translations.csv, 254 rows
+    w10 (sample)        50/50  fail=0  out/jobs/w10/done/
+    photo (sample)      20/20  fail=0  out/jobs/photo/done/
+    rel (sample)        40/40  fail=0  out/jobs/rel/done/
+    relevance-solo     310 long messages decided by rule
+    relevance-consensus 310 messages with a verdict, 10101 incomplete
+    aggregate          50 summary rows -> 1176 index rows
+    photo-index        20 photo rows -> 1196 index rows
+
+The index rows trace back to the chat. The quote row of window `w10-00000`
+reads `592679-251114 | This isn't an article, but a talk given at a Russian
+community conference`, and message `592679-251114` of `data/messages.csv`
+holds that sentence.
+
+The 2 defects this sample found
+-------------------------------
+
+1. The answer check read a summary prompt as a relevance vote. Both head each
+   message with `###`, so `AnswerWrongnessOf` demanded 1 vote line per message
+   and rejected all 50 summary answers. Fixed: the vote check runs only when
+   the prompt holds `Your job is 1 decision per message`.
+
+2. `photo-index` and `aggregate` both called `index.Run`, because 2 packages
+   are named `index` and the qualifier resolved to the aggregate one. Fixed:
+   `cmd/subcommand` imports them as `aggregateindex` and `photoindex`.
+
+The vision model
+----------------
+
+`zai` needs no separate key when the provider is named in full. The working
+call is
+
+    --model glm-5.3-flash --provider zai.glm-5.3-flash-128k
+
+A bare `--provider zai` answers `No API key found for zai`. The `huggingface`
+provider has vision models but answers `402 Purchase pre-paid credits`.

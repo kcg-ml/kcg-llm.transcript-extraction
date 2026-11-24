@@ -1,0 +1,588 @@
+================================================================================
+DESIGN: the projects, the groups, and the tiers of transcript-extraction
+================================================================================
+
+Date: 261124
+Subject: the Go app of this repository, at commit 5b491bf, 17 `.go` files
+Standard: lexicographic decomposition, as
+          `../pi.261122.nanogpt/design.nanogpt-lexicographic-decomposition.txt`
+          states it for nanoGPT. This file applies that standard to this app.
+
+INTENT: This file states the project list of this app, the group split of each
+project, the tier of each project, and the file name of each type. A reader
+then finds the build order and every wrong import from the names and 1 file,
+without scanning the code.
+
+Rules: the 5 operator naming preferences and the 2 group rules of the nanoGPT
+design. This file states the work, not the rules.
+
+================================================================================
+1. THE NAMING OF THIS STANDARD
+================================================================================
+
+The 3 names of this design, and the form of each:
+
+    project        <tier>-<project>              t2-transcriptextraction-summary
+    group          <tier>-<project>.<group>      t2-transcriptextraction-summary.window
+    file           nNNNN.<tier>-<project>.[<name>].go
+                   n0410.t2-transcriptextraction-summary.[window].go
+
+The 3 names share 1 prefix, so a reader who sorts the folders sees the
+project, then its groups, then the files of each group.
+
+## The 1 difference from the nanoGPT design
+
+Go forbids a dot in a package folder name, and a Go package is 1 folder. The
+nanoGPT design names a group `<tier>-<project>.<group>` and puts its files in
+that folder. This app cannot, so the group becomes a sub-folder of the project
+folder:
+
+    folder   internal/t2-transcriptextraction-summary/window/
+    package  window
+    file     n0410.t2-transcriptextraction-summary.[window].go
+
+The group name is still `<tier>-<project>.<group>` in this file and in the
+project list, and the folder path states it as 2 path segments. A reader who
+sorts `internal/` sees the projects in tier order, and a reader who sorts a
+project folder sees the groups in group order, then the files in import order.
+
+================================================================================
+2. THE TIER ASSIGNMENT
+================================================================================
+
+The tiers run t0 < t1 < t2 < t3 < t4 < te. A project sits in the lowest tier
+that holds every project it imports, plus 1.
+
+    tier   project                          what it holds
+    -----  -------------------------------  --------------------------------
+    t0     t0-transcriptextraction-table    the CSV table and the text rules:
+                                           the folder paths, the URL and arXiv
+                                           and DOI patterns, the word count,
+                                           the message key, the month, and the
+                                           rune-safe cut
+    t1     t1-transcriptextraction-export   the Telegram export read and the
+                                           6 side tables
+    t1     t1-transcriptextraction-split    the 3 split modes and the part
+                                           tables
+    t1     t1-transcriptextraction-reference the 14 reference kinds and the
+                                           rule extraction over every message
+    t1     t1-transcriptextraction-translate the English text of a Cyrillic
+                                           message
+    t2     t2-transcriptextraction-summary  the summary windows and their
+                                           prompt
+    t2     t2-transcriptextraction-relevance the relevance windows, the solo
+                                           vote, and the consensus
+    t2     t2-transcriptextraction-photo    the photo table, the photo prompt,
+                                           and the photo index
+    t2     t2-transcriptextraction-aggregate the summary parse, the rollup
+                                           prompt, and the index tables
+    t3     t3-transcriptextraction-job      the durable job: the unit, the
+                                           store, the pi call, the answer
+                                           check, and the progress line
+    t4     t4-transcriptextraction-chain    the unit list of each job and the
+                                           stage chain
+    te     te-transcriptextraction-main     the 12 subcommands and the 2
+                                           commands
+
+The 4 t1 projects import only `t0-transcriptextraction-table`, so they share a
+tier and import nothing of their own tier. The 4 t2 projects import t1 and t0,
+so they sit in t2. `t3-transcriptextraction-job` imports t0 only, but it sits
+in t3 because the t4 chain imports it and the t2 stages do not. The 2 te
+commands import every tier.
+
+## Why the job sits above the stages
+
+`t3-transcriptextraction-job` imports `t0` alone, so the tier rule alone would
+put it in t1. It sits in t3 for 2 reasons:
+
+- The chain of t4 calls the job, and the job calls no stage. A job that sat in
+  t1 would let a t1 stage import the job, and then the job would call the stage
+  that imports it.
+- The job is the only project that runs a model call, so a reader who reads the
+  tier list sees the model boundary at t3 and above.
+
+The import check of section 9 still passes, because t3 imports only t0.
+
+================================================================================
+3. THE PROJECT LIST
+================================================================================
+
+This is the content of `00-projects-and-groups.txt` at the repository root.
+The file bears no heading and no comment, so the block below is the whole file.
+
+    Reviewed-by: sp 261124
+    t0-transcriptextraction-table
+      holds the CSV table and the text rules that every other project calls
+    t1-transcriptextraction-export
+      holds the Telegram export read and the 6 side tables of data/messages.csv
+    t1-transcriptextraction-split
+      holds the 3 split modes and the 3 part tables
+    t1-transcriptextraction-reference
+      holds the 14 reference kinds and the rule extraction over every message
+    t1-transcriptextraction-translate
+      holds the English text of a Cyrillic message, and the table that keeps it
+    t2-transcriptextraction-summary
+      holds the summary windows and the prompt of each window
+    t2-transcriptextraction-relevance
+      holds the relevance windows, the solo vote, and the 3-vote consensus
+    t2-transcriptextraction-photo
+      holds the photo table, the photo prompt, and the photo index
+    t2-transcriptextraction-aggregate
+      holds the summary parse, the rollup prompt, and the index tables
+    t3-transcriptextraction-job
+      holds the durable job: the unit, the store, the pi call, and the progress line
+    t4-transcriptextraction-chain
+      holds the unit list of each job and the stage chain
+    te-transcriptextraction-main
+      the 12 subcommands and the 2 commands
+
+================================================================================
+4. THE GROUP SPLIT
+================================================================================
+
+A group is a named part of 1 project, with the name `<tier>-<project>.<group>`.
+The files of a group share the prefix `<tier>-<project>`.
+
+The 2 rules that decide the split:
+
+- 2 or more sets of files that import nothing from each other become 2 or more
+  groups.
+- 2 sets where 1 imports the other stay in 1 group, and the number orders
+  them.
+
+    group                                        what it holds
+    -------------------------------------------  ----------------------------
+    t0-transcriptextraction-table.path           the 5 folder paths and the
+                                                 project folder variable;
+                                                 imports nothing
+    t0-transcriptextraction-table.pattern        the URL, arXiv, and DOI
+                                                 patterns, the clean, the host
+                                                 name, the word count, the
+                                                 message key, the month, and
+                                                 the rune-safe cut; imports
+                                                 nothing
+    t0-transcriptextraction-table.table          the CSV table read and write;
+                                                 imports nothing
+    t1-transcriptextraction-export.read          the export file, the export
+                                                 message, the export entity,
+                                                 and the text of a message;
+                                                 imports nothing
+    t1-transcriptextraction-export.label         the reference label before a
+                                                 URL; imports .read
+    t1-transcriptextraction-export.write         the 6 side tables; imports
+                                                 .read and .label
+    t1-transcriptextraction-split.source         the source type of a message;
+                                                 imports nothing
+    t1-transcriptextraction-split.paragraph      the paragraph list of a text;
+                                                 imports nothing
+    t1-transcriptextraction-split.sentence       the sentence list of a text;
+                                                 imports nothing
+    t1-transcriptextraction-split.part           the part text list and the
+                                                 part table; imports .source,
+                                                 .paragraph, .sentence
+    t1-transcriptextraction-reference.kind       the 14 reference kinds and the
+                                                 term lists; imports nothing
+    t1-transcriptextraction-reference.sentence   the sentence span and the
+                                                 sentence around a position;
+                                                 imports nothing
+    t1-transcriptextraction-reference.pattern    the 8 sentence patterns and
+                                                 the term pattern; imports
+                                                 .sentence
+    t1-transcriptextraction-reference.collect    the reference collector and
+                                                 the table write; imports
+                                                 .kind, .pattern
+    t1-transcriptextraction-translate.prompt     the translation prompt;
+                                                 imports nothing
+    t1-transcriptextraction-translate.table      the translation table and the
+                                                 Cyrillic test; imports .prompt
+    t2-transcriptextraction-summary.window       the window and its list;
+                                                 imports nothing
+    t2-transcriptextraction-summary.prompt       the prompt of 1 window;
+                                                 imports .window
+    t2-transcriptextraction-relevance.window     the relevance window and its
+                                                 list; imports nothing
+    t2-transcriptextraction-relevance.prompt     the relevance prompt; imports
+                                                 .window
+    t2-transcriptextraction-relevance.vote       the 3 rule votes; imports
+                                                 nothing
+    t2-transcriptextraction-relevance.solo       the solo vote of a long
+                                                 message; imports .vote
+    t2-transcriptextraction-relevance.consensus  the vote parse and the
+                                                 verdict; imports nothing
+    t2-transcriptextraction-photo.table          the photo table and the photo
+                                                 export; imports nothing
+    t2-transcriptextraction-photo.prompt         the photo prompt; imports
+                                                 .table
+    t2-transcriptextraction-photo.index          the photo answer parse and the
+                                                 photo index; imports nothing
+    t2-transcriptextraction-aggregate.parse      the summary answer parse;
+                                                 imports nothing
+    t2-transcriptextraction-aggregate.rollup     the rollup prompt; imports
+                                                 .parse
+    t2-transcriptextraction-aggregate.index      the 5 index tables; imports
+                                                 .parse
+    t3-transcriptextraction-job.unit             the job unit and the job
+                                                 settings; imports nothing
+    t3-transcriptextraction-job.store            the done and failed file, the
+                                                 state line, and the counts;
+                                                 imports .unit
+    t3-transcriptextraction-job.call             the pi call and the image
+                                                 shrink; imports .unit
+    t3-transcriptextraction-job.answer           the error text and the
+                                                 wrongness of an answer;
+                                                 imports nothing
+    t3-transcriptextraction-job.progress         the run counters and the
+                                                 progress line; imports .unit,
+                                                 .store
+    t3-transcriptextraction-job.run              the worker pool and 1 unit;
+                                                 imports every group of t3
+    t4-transcriptextraction-chain.unit           the unit list of each job;
+                                                 imports nothing
+    t4-transcriptextraction-chain.stage          the 12 stage names and the
+                                                 rule stage runner; imports
+                                                 nothing
+    t4-transcriptextraction-chain.run            the chain in order; imports
+                                                 .unit, .stage
+    te-transcriptextraction-main.subcommand      the 12 subcommands and the
+                                                 job flags; imports nothing
+    te-transcriptextraction-main.command         the 2 commands; imports
+                                                 .subcommand
+    te-transcriptextraction-main.csvcheck        the CSV column check;
+                                                 imports nothing
+
+================================================================================
+5. THE FILE LIST AND THE IMPORT ORDER
+================================================================================
+
+A file holds 1 type, 1 function, or 1 constant block. A Go package may hold
+several files, so a group of 1 type is 1 file, and a group of several types is
+several files numbered in import order.
+
+The number states the position of the file in the import order of its group.
+A file that imports nothing takes the lowest number of its group, and a file
+that imports a second file of the same group takes a higher number.
+
+    file                                                         imports
+    -----------------------------------------------------------  ----------
+    t0-transcriptextraction-table/path/n0100.t0-transcriptextraction-table.[path].go                (nothing)
+    t0-transcriptextraction-table/pattern/n0110.t0-transcriptextraction-table.[pattern].go          (nothing)
+    t0-transcriptextraction-table/table/n0120.t0-transcriptextraction-table.[table].go              (nothing)
+    t1-transcriptextraction-export/read/n0200.t1-transcriptextraction-export.[read].go              (nothing)
+    t1-transcriptextraction-export/read/n0201.t1-transcriptextraction-export.[read].go              n0200
+    t1-transcriptextraction-export/read/n0202.t1-transcriptextraction-export.[read].go              n0200, n0201
+    t1-transcriptextraction-export/label/n0210.t1-transcriptextraction-export.[label].go            n0200
+    t1-transcriptextraction-export/write/n0220.t1-transcriptextraction-export.[write].go            n0200, n0210
+    t1-transcriptextraction-split/source/n0300.t1-transcriptextraction-split.[source].go            (nothing)
+    t1-transcriptextraction-split/paragraph/n0310.t1-transcriptextraction-split.[paragraph].go      (nothing)
+    t1-transcriptextraction-split/sentence/n0320.t1-transcriptextraction-split.[sentence].go        (nothing)
+    t1-transcriptextraction-split/part/n0330.t1-transcriptextraction-split.[part].go                n0300, n0310, n0320
+    t1-transcriptextraction-reference/kind/n0400.t1-transcriptextraction-reference.[kind].go        (nothing)
+    t1-transcriptextraction-reference/sentence/n0410.t1-transcriptextraction-reference.[sentence].go (nothing)
+    t1-transcriptextraction-reference/refpattern/n0420.t1-transcriptextraction-reference.[refpattern].go n0410
+    t1-transcriptextraction-reference/collect/n0430.t1-transcriptextraction-reference.[collect].go  n0400, n0420
+    t1-transcriptextraction-translate/prompt/n0500.t1-transcriptextraction-translate.[prompt].go    (nothing)
+    t1-transcriptextraction-translate/table/n0510.t1-transcriptextraction-translate.[table].go      n0500
+    t2-transcriptextraction-summary/window/n0600.t2-transcriptextraction-summary.[window].go        (nothing)
+    t2-transcriptextraction-summary/prompt/n0610.t2-transcriptextraction-summary.[prompt].go        n0600
+    t2-transcriptextraction-relevance/window/n0700.t2-transcriptextraction-relevance.[window].go    (nothing)
+    t2-transcriptextraction-relevance/relprompt/n0710.t2-transcriptextraction-relevance.[relprompt].go n0700
+    t2-transcriptextraction-relevance/vote/n0720.t2-transcriptextraction-relevance.[vote].go        (nothing)
+    t2-transcriptextraction-relevance/solo/n0730.t2-transcriptextraction-relevance.[solo].go        n0720
+    t2-transcriptextraction-relevance/consensus/n0740.t2-transcriptextraction-relevance.[consensus].go (nothing)
+    t2-transcriptextraction-relevance/consensus/n0741.t2-transcriptextraction-relevance.[consensus].go n0740
+    t2-transcriptextraction-photo/table/n0800.t2-transcriptextraction-photo.[table].go              (nothing)
+    t2-transcriptextraction-photo/table/n0801.t2-transcriptextraction-photo.[table].go              n0800
+    t2-transcriptextraction-photo/photoprompt/n0810.t2-transcriptextraction-photo.[photoprompt].go  n0800
+    t2-transcriptextraction-photo/index/n0820.t2-transcriptextraction-photo.[index].go              (nothing)
+    t2-transcriptextraction-aggregate/parse/n0900.t2-transcriptextraction-aggregate.[parse].go      (nothing)
+    t2-transcriptextraction-aggregate/parse/n0901.t2-transcriptextraction-aggregate.[parse].go      n0900
+    t2-transcriptextraction-aggregate/rollup/n0910.t2-transcriptextraction-aggregate.[rollup].go    n0900
+    t2-transcriptextraction-aggregate/index/n0920.t2-transcriptextraction-aggregate.[index].go      n0900
+    t3-transcriptextraction-job/unit/n1000.t3-transcriptextraction-job.[unit].go                    (nothing)
+    t3-transcriptextraction-job/unit/n1001.t3-transcriptextraction-job.[unit].go                    n1000
+    t3-transcriptextraction-job/store/n1010.t3-transcriptextraction-job.[store].go                  n1000
+    t3-transcriptextraction-job/call/n1020.t3-transcriptextraction-job.[call].go                    n1000
+    t3-transcriptextraction-job/answer/n1030.t3-transcriptextraction-job.[answer].go                (nothing)
+    t3-transcriptextraction-job/progress/n1040.t3-transcriptextraction-job.[progress].go            n1000, n1010
+    t3-transcriptextraction-job/run/n1050.t3-transcriptextraction-job.[run].go                      n1000 to n1040
+    t4-transcriptextraction-chain/chainunit/n1100.t4-transcriptextraction-chain.[chainunit].go      (nothing)
+    t4-transcriptextraction-chain/stage/n1110.t4-transcriptextraction-chain.[stage].go              (nothing)
+    t4-transcriptextraction-chain/chainrun/n1120.t4-transcriptextraction-chain.[chainrun].go        n1100, n1110
+    te-transcriptextraction-main/subcommand/n1200.te-transcriptextraction-main.[subcommand].go      (nothing)
+    te-transcriptextraction-main/command/n1210.te-transcriptextraction-main.[command].go            n1200
+    te-transcriptextraction-main/csvcheck/n1300.te-transcriptextraction-main.[csvcheck].go          (nothing)
+
+4 groups are renamed from the name this design first gave them, because Go
+takes the folder name as the package name and 2 packages of one name cannot
+both be imported by 1 file:
+
+    first name   final name    why
+    -----------  ------------  ------------------------------------------------
+    pattern      refpattern    `t0-...-table/pattern` holds CutRuneText and
+                               `t1-...-reference/pattern` holds TermPatternOf,
+                               and `collect` reads both
+    prompt       relprompt     `t2-...-summary/prompt` holds RenderPrompt for a
+                               summary and `t2-...-relevance/prompt` holds
+                               RenderPrompt for a relevance vote
+    prompt       photoprompt   `t2-...-photo/prompt` holds the photo prompt
+    unit         chainunit     `t3-...-job/unit` holds JobUnit and
+                               `t4-...-chain/unit` holds UnitListOf
+    run          chainrun      `t3-...-job/run` holds Run for a job and
+                               `t4-...-chain/run` holds Run for the chain
+
+================================================================================
+6. THE FILE NAME OF EACH TYPE
+================================================================================
+
+The operator states 3 rules for a file name:
+
+- 1 type, 1 function, or 1 constant block per file.
+- The file name starts with a lowercase `n` and a 4-digit number, and the
+  number states the position of the file in the import order of its project.
+- The file name states the tier and the project, so a reader who reads the
+  file name knows the tier and the project without reading the folder path.
+
+The form of the file name is:
+
+    nNNNN.<tier>-<project>.[<name>].go
+
+    nNNNN       the position of the file in the import order of its project.
+                The number is 4 digits, and it steps by 100 for each project
+                and by 10 for each group, so a later split has room for a new
+                file without a renumber of the files beside it.
+    <tier>      the tier of the project that holds the file: t0, t1, t2, t3,
+                t4, or te.
+    <project>   the project name of the file, for example
+                transcriptextraction-summary.
+    <name>      the group name in kebab-case, for example `window`.
+
+## The number space
+
+    project                          number block   the groups, and their blocks
+    -------------------------------  -------------  -------------------------
+    t0-transcriptextraction-table    n0100 to n0199  .path n0100, .pattern
+                                                    n0110, .table n0120
+    t1-transcriptextraction-export   n0200 to n0299  .read n0200, .label
+                                                    n0210, .write n0220
+    t1-transcriptextraction-split    n0300 to n0399  .source n0300,
+                                                    .paragraph n0310,
+                                                    .sentence n0320,
+                                                    .part n0330
+    t1-transcriptextraction-reference n0400 to n0499 .kind n0400,
+                                                    .sentence n0410,
+                                                    .pattern n0420,
+                                                    .collect n0430
+    t1-transcriptextraction-translate n0500 to n0599 .prompt n0500,
+                                                    .table n0510
+    t2-transcriptextraction-summary  n0600 to n0699  .window n0600,
+                                                    .prompt n0610
+    t2-transcriptextraction-relevance n0700 to n0799 .window n0700,
+                                                    .prompt n0710,
+                                                    .vote n0720, .solo n0730,
+                                                    .consensus n0740
+    t2-transcriptextraction-photo    n0800 to n0899  .table n0800,
+                                                    .prompt n0810,
+                                                    .index n0820
+    t2-transcriptextraction-aggregate n0900 to n0999 .parse n0900,
+                                                    .rollup n0910,
+                                                    .index n0920
+    t3-transcriptextraction-job      n1000 to n1099  .unit n1000,
+                                                    .store n1010,
+                                                    .call n1020,
+                                                    .answer n1030,
+                                                    .progress n1040,
+                                                    .run n1050
+    t4-transcriptextraction-chain    n1100 to n1199  .unit n1100,
+                                                    .stage n1110,
+                                                    .run n1120
+    te-transcriptextraction-main     n1200 to n1299  .subcommand n1200,
+                                                    .command n1210
+    te-transcriptextraction-main     n1300 to n1399  .csvcheck n1300
+
+The block of a project follows the order of the project list in section 3, so
+a reader who sorts the file names sees the projects in tier order.
+
+The 2 commands `transcriptextraction` and `csvcheck` are 2 entry points, so
+they take 2 blocks of the 1 te project. The block `n1300` is the second entry
+point, and the gap `n1220` to `n1299` stays free for a later subcommand.
+
+## The Go name inside the file
+
+Go requires a package name, and the package name is the group name in
+lowerCamelCase, because a Go package name holds no hyphen:
+
+    folder   internal/t2-transcriptextraction-summary/window/
+    package  window
+    type     Window
+    file     n0600.t2-transcriptextraction-summary.[window].go
+
+The type name is PascalCase, as Go requires. The `<name>` part of the file
+name is the kebab-case form of the group name, so `Window` sits in
+`n0600.t2-transcriptextraction-summary.[window].go`.
+
+================================================================================
+7. THE RENAME: WHAT EACH FILE BECOMES
+================================================================================
+
+The table below names each file of this app today, the types it holds, and the
+file names and groups they take after the rename. The 17 files hold 108
+declarations, and the rename splits them into 1 type, 1 function, or 1 constant
+block per file.
+
+    today                                   after the rename
+    --------------------------------------  ------------------------------------
+    internal/textrule/textrule.go           t0-transcriptextraction-table/path/n0100.t0-transcriptextraction-table.[path].go
+                                            t0-transcriptextraction-table/pattern/n0110.t0-transcriptextraction-table.[pattern].go
+    internal/csvtable/csvtable.go           t0-transcriptextraction-table/table/n0120.t0-transcriptextraction-table.[table].go
+    internal/telegramexport/telegramexport.go  t1-transcriptextraction-export/read/n0200.t1-transcriptextraction-export.[read].go
+                                            t1-transcriptextraction-export/label/n0210.t1-transcriptextraction-export.[label].go
+                                            t1-transcriptextraction-export/write/n0220.t1-transcriptextraction-export.[write].go
+    internal/messagesplit/messagesplit.go   t1-transcriptextraction-split/source/n0300.t1-transcriptextraction-split.[source].go
+                                            t1-transcriptextraction-split/paragraph/n0310.t1-transcriptextraction-split.[paragraph].go
+                                            t1-transcriptextraction-split/sentence/n0320.t1-transcriptextraction-split.[sentence].go
+                                            t1-transcriptextraction-split/part/n0330.t1-transcriptextraction-split.[part].go
+    internal/referenceextraction/referenceextraction.go
+                                            t1-transcriptextraction-reference/kind/n0400.t1-transcriptextraction-reference.[kind].go
+                                            t1-transcriptextraction-reference/sentence/n0410.t1-transcriptextraction-reference.[sentence].go
+                                            t1-transcriptextraction-reference/refpattern/n0420.t1-transcriptextraction-reference.[refpattern].go
+                                            t1-transcriptextraction-reference/collect/n0430.t1-transcriptextraction-reference.[collect].go
+    (new)                                   t1-transcriptextraction-translate/prompt/n0500.t1-transcriptextraction-translate.[prompt].go
+                                            t1-transcriptextraction-translate/table/n0510.t1-transcriptextraction-translate.[table].go
+    internal/summarywindow/summarywindow.go t2-transcriptextraction-summary/window/n0600.t2-transcriptextraction-summary.[window].go
+                                            t2-transcriptextraction-summary/prompt/n0610.t2-transcriptextraction-summary.[prompt].go
+    internal/relevancewindow/relevancewindow.go
+                                            t2-transcriptextraction-relevance/window/n0700.t2-transcriptextraction-relevance.[window].go
+                                            t2-transcriptextraction-relevance/relprompt/n0710.t2-transcriptextraction-relevance.[relprompt].go
+                                            t2-transcriptextraction-relevance/vote/n0720.t2-transcriptextraction-relevance.[vote].go
+    internal/relevancesolo/relevancesolo.go t2-transcriptextraction-relevance/solo/n0730.t2-transcriptextraction-relevance.[solo].go
+    internal/relevanceconsensus/relevanceconsensus.go
+                                            t2-transcriptextraction-relevance/consensus/n0740.t2-transcriptextraction-relevance.[consensus].go
+    internal/photoextraction/photoextraction.go
+                                            t2-transcriptextraction-photo/table/n0800.t2-transcriptextraction-photo.[table].go
+                                            t2-transcriptextraction-photo/photoprompt/n0810.t2-transcriptextraction-photo.[photoprompt].go
+    internal/phototable/phototable.go       t2-transcriptextraction-photo/index/n0820.t2-transcriptextraction-photo.[index].go
+    internal/summaryaggregation/summaryaggregation.go
+                                            t2-transcriptextraction-aggregate/parse/n0900.t2-transcriptextraction-aggregate.[parse].go
+                                            t2-transcriptextraction-aggregate/rollup/n0910.t2-transcriptextraction-aggregate.[rollup].go
+                                            t2-transcriptextraction-aggregate/index/n0920.t2-transcriptextraction-aggregate.[index].go
+    internal/durablejob/durablejob.go       t3-transcriptextraction-job/unit/n1000.t3-transcriptextraction-job.[unit].go
+                                            t3-transcriptextraction-job/store/n1010.t3-transcriptextraction-job.[store].go
+                                            t3-transcriptextraction-job/call/n1020.t3-transcriptextraction-job.[call].go
+                                            t3-transcriptextraction-job/answer/n1030.t3-transcriptextraction-job.[answer].go
+                                            t3-transcriptextraction-job/progress/n1040.t3-transcriptextraction-job.[progress].go
+                                            t3-transcriptextraction-job/run/n1050.t3-transcriptextraction-job.[run].go
+    internal/jobunit/jobunit.go             t4-transcriptextraction-chain/chainunit/n1100.t4-transcriptextraction-chain.[chainunit].go
+    internal/pipelinechain/pipelinechain.go t4-transcriptextraction-chain/stage/n1110.t4-transcriptextraction-chain.[stage].go
+                                            t4-transcriptextraction-chain/chainrun/n1120.t4-transcriptextraction-chain.[chainrun].go
+    cmd/transcriptextraction/main.go        te-transcriptextraction-main/subcommand/n1200.te-transcriptextraction-main.[subcommand].go
+                                            te-transcriptextraction-main/command/n1210.te-transcriptextraction-main.[command].go
+    cmd/csvcheck/main.go                    te-transcriptextraction-main/csvcheck/n1300.te-transcriptextraction-main.[csvcheck].go
+
+## The 3 types that move across a group
+
+3 declarations belong to a group other than the file that holds them today:
+
+    declaration today                              group it belongs to
+    ---------------------------------------------  ------------------------
+    summarywindow.namedReferenceKindSet            t2-transcriptextraction-summary/prompt
+    summarywindow.RenderPrompt                     t2-transcriptextraction-summary/prompt
+    phototable.appendPhotoRowsToIndex              t2-transcriptextraction-photo/index
+
+`namedReferenceKindSet` and `RenderPrompt` read the reference rows of 1
+message, so they belong with the prompt, not with the window list. The window
+group holds the window and its list, and imports nothing.
+
+## The 4 duplicate helpers
+
+4 files hold a private `cutText` and 3 hold a private `boolText`. Both are
+copies of 1 rule, so the rename keeps 1 copy of each in
+`t0-transcriptextraction-table.pattern`:
+
+    today                                    after the rename
+    ---------------------------------------  --------------------------------
+    referenceextraction.cutText              textrule.CutRuneText
+    summaryaggregation.cutText               textrule.CutRuneText
+    relevancewindow.cutText                  textrule.CutRuneText
+    relevanceconsensus.cutText               textrule.CutRuneText
+    photoextraction.cutText                  textrule.CutRuneText
+    phototable.cutText                       textrule.CutRuneText
+    durablejob.cutText                       textrule.CutRuneText
+    telegramexport.boolText                  textrule.BoolText
+    messagesplit.boolText                    textrule.BoolText
+    referenceextraction.boolText             textrule.BoolText
+    summaryaggregation.boolText              textrule.BoolText
+
+================================================================================
+8. THE IMPORT ORDER OF 1 GROUP, WORKED
+================================================================================
+
+This section shows the numbering rule of section 6 on 1 project, so a reader
+can check the rule against a real folder.
+
+The project `t3-transcriptextraction-job` owns the block `n1000` to `n1099`.
+Its 6 groups take 6 blocks of 10 numbers:
+
+    .unit      n1000   n1000.t3-transcriptextraction-job.[unit].go
+    .store     n1010   n1010.t3-transcriptextraction-job.[store].go
+    .call      n1020   n1020.t3-transcriptextraction-job.[call].go
+    .answer    n1030   n1030.t3-transcriptextraction-job.[answer].go
+    .progress  n1040   n1040.t3-transcriptextraction-job.[progress].go
+    .run       n1050   n1050.t3-transcriptextraction-job.[run].go
+
+The numbers `n1001` to `n1009`, `n1011` to `n1019`, and the rest of each block
+stay free, so a later file takes the next free number of its block and no file
+beside it moves.
+
+A reader who sorts the project folder sees the group order first, because the
+number is the first 5 characters of the file name.
+
+================================================================================
+9. THE IMPORT CHECK OF THIS DESIGN
+================================================================================
+
+Each project imports only a strictly lower tier, so the design passes the
+strict form of the rule.
+
+    project                            imports              verdict
+    ---------------------------------  -------------------  ---------------
+    t0-transcriptextraction-table      (nothing)            pass
+    t1-transcriptextraction-export     t0                   pass
+    t1-transcriptextraction-split      t0                   pass
+    t1-transcriptextraction-reference  t0                   pass
+    t1-transcriptextraction-translate  t0                   pass
+    t2-transcriptextraction-summary    t1, t0               pass
+    t2-transcriptextraction-relevance  t1, t0               pass
+    t2-transcriptextraction-photo      t1, t0               pass
+    t2-transcriptextraction-aggregate  t1, t0               pass
+    t3-transcriptextraction-job        t0                   pass
+    t4-transcriptextraction-chain      t3, t2, t1, t0       pass
+    te-transcriptextraction-main       t4, t3, t2, t1, t0   pass
+
+No project imports a project of its own tier, so no same-tier chain exists.
+
+================================================================================
+10. WHAT THIS DESIGN DOES NOT DECIDE
+================================================================================
+
+- The name of each type. This design gives each file a group name, and the
+  type inside the file takes the PascalCase form of that name. The operator
+  confirms a type name before the rename.
+- The translation stage. This design gives it a project, 2 groups, and 2 file
+  names, and the code of it is written in a later step.
+- The 2 commands `transcriptextraction` and `csvcheck`. This design gives each
+  one a block, and the build script keeps 2 binaries.
+
+================================================================================
+11. THE STEPS THAT APPLY THIS DESIGN
+================================================================================
+
+1. Write `00-projects-and-groups.txt` at the repository root with the content
+   of section 3.
+2. Create each project of section 2 as a folder, and each group as a
+   sub-folder.
+3. Move each declaration of section 7 into its group folder, with the file
+   name of section 6.
+4. Replace the 7 `cutText` copies and the 4 `boolText` copies with
+   `textrule.CutRuneText` and `textrule.BoolText`.
+5. Run `go build ./...` and confirm there are no errors.
+6. Run the import check of section 9 and confirm every project passes.

@@ -1,7 +1,7 @@
 # Generated folders. The export is read from the 2 folders below, and every
 # other folder here is rebuilt by ./build.sh --rules and the `job` subcommand.
 data/
-out/
+model-answer/
 prompts/
 logs/
 
@@ -17,3 +17,6 @@ extract.telegram-log.vlad-images/
 .DS_Store
 # The pi goal ledger of this session.
 .pi/
+
+# Files moved aside by a rename, kept on disk but not in the history.
+cleanup/

@@ -206,7 +206,7 @@ func Run(projectFolderPath string) error {
 		return loadError
 	}
 	if len(recordList) == 0 {
-		return fmt.Errorf("no model answers in out/; run the job runner first")
+		return fmt.Errorf("no model answers in model-answer/; run the job runner first")
 	}
 
 	summaryTable := table.NewTable(parse.SummaryTableColumnNames)

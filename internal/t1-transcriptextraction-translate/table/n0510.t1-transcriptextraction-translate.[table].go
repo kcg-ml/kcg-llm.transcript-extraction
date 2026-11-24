@@ -125,7 +125,7 @@ func Run(projectFolderPath string) error {
 	if writeError != nil {
 		return writeError
 	}
-	fmt.Printf("wrote %6d translation prompts  prompts/translate-*.txt\n", promptCount)
+	fmt.Printf("wrote %6d translation prompts  prompts/message-translation-*.txt\n", promptCount)
 	translationRowList, missingCount, buildError := BuildTranslationTableList(projectFolderPath)
 	if buildError != nil {
 		return buildError

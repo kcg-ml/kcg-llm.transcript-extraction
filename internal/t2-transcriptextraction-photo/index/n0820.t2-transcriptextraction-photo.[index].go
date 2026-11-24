@@ -159,7 +159,7 @@ func Run(projectFolderPath string) error {
 		return appendError
 	}
 	if pendingCount > 0 {
-		fmt.Fprintf(os.Stderr, "%d photos have no answer yet in out/jobs/photo/done/\n",
+		fmt.Fprintf(os.Stderr, "%d photos have no answer yet in model-answer/job/photo-content/done/\n",
 			pendingCount)
 	}
 	return nil

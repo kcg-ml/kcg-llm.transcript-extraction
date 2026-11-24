@@ -3,6 +3,11 @@ Sample end-to-end run, 2026-11-24
 
 What ran, and what it proved.
 
+This run happened before the rename of 2026-11-24, so the paths below name the
+folders as they were then. `out/jobs/<job>/done/` is now
+`model-answer/job/<new-job-name>/done/`, and the job names are the new ones in
+`note.261124-rename-table.txt`. The counts are unchanged.
+
     stage              units   result
     -----------------  ------  ------------------------------------------
     translate          254/254 fail=0  data/translations.csv, 254 rows

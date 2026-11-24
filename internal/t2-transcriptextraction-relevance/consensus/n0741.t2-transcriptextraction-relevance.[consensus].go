@@ -284,7 +284,7 @@ func Run(projectFolderPath string) error {
 	fmt.Printf("verdicts: %v\n", verdictCountOfName)
 	fmt.Printf("agreement: %v\n", agreementCountOfName)
 	if missingWindowCount > 0 {
-		fmt.Fprintf(os.Stderr, "%d relevance windows have no answer yet in out/\n",
+		fmt.Fprintf(os.Stderr, "%d relevance windows have no answer yet in model-answer/job/relevance-window-vote/done/\n",
 			missingWindowCount)
 	}
 	return nil

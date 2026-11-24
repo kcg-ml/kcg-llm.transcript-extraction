@@ -156,6 +156,6 @@ func Run(projectFolderPath string, forceRewrite bool) error {
 	}
 	fmt.Printf("wrote %6d relevance windows  %s\n", windowTable.RowCount(),
 		table.RelativePath(projectFolderPath, windowTablePath))
-	fmt.Printf("wrote %6d prompts  prompts/rel-*.txt\n", windowTable.RowCount())
+	fmt.Printf("wrote %6d prompts  prompts/relevance-window-vote-*.txt\n", windowTable.RowCount())
 	return nil
 }

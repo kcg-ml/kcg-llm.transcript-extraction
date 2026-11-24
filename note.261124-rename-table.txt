@@ -1,0 +1,153 @@
+# The rename table of the transcript-extraction pipeline
+
+Every name below states the object it holds and the stage that makes it, so a
+reader knows what a folder or a file holds without opening it. A name is a
+path from the general to the specific, in Java style: `UpperCamelCase` for a
+Go identifier, `lower_snake_case` for a CSV value, and `kebab-case` for a
+folder or a file name.
+
+## Group 1: the durable job names
+
+A job name is the folder under `out/jobs/` that holds one answer file per
+unit. The old name was an abbreviation or a bare size, so a reader could not
+tell what the answer held.
+
+| old | new | holds |
+| --- | --- | --- |
+| `translate` | `message-translation` | the English text of 1 message that holds Cyrillic |
+| `w10` | `summary-window-of-10-messages` | the 14-field summary of 10 consecutive messages |
+| `w100` | `summary-window-of-100-messages` | the 14-field summary of 100 consecutive messages |
+| `month` | `summary-window-of-one-month` | the 14-field summary of 1 calendar month |
+| `meta` | `summary-window-of-whole-chat` | the 14-field summary of the whole chat, rolled up from the months |
+| `rel` | `relevance-window-vote` | 1 vote on whether a window of messages is relevant to machine learning |
+| `photo` | `photo-content` | what 1 photo shows, its text, topic, relevance, numbers, and terms |
+
+The `meta` job answers 2 window kinds, `meta-w100` and `meta-month`, and
+`meta-chat`. All 3 are the whole-chat rollup at a different level, so all 3
+belong to `summary-window-of-whole-chat`.
+
+## Group 2: the `window_kind` values of `data/windows.csv`
+
+The old value named a size or an abbreviation, not the object.
+
+| old | new |
+| --- | --- |
+| `w10` | `summary-window-of-10-messages` |
+| `w100` | `summary-window-of-100-messages` |
+| `month` | `summary-window-of-one-month` |
+| `meta` | `summary-window-of-whole-chat` |
+
+`data/index.csv` also carries `window_kind = photo` for a photo row. That
+value becomes `photo-content`, the same word as the job that answers it.
+
+## Group 3: the `window_id` and `rel_window_id` prefixes
+
+A window id is `<prefix>-<index>`, and the prefix is the `window_kind`, so the
+2 groups move together.
+
+| old prefix | new prefix | example |
+| --- | --- | --- |
+| `w10-` | `summary-window-of-10-messages-` | `summary-window-of-10-messages-00042` |
+| `w100-` | `summary-window-of-100-messages-` | `summary-window-of-100-messages-00007` |
+| `month-` | `summary-window-of-one-month-` | `summary-window-of-one-month-2025-11` |
+| `meta-w100-` | `summary-window-of-whole-chat-from-100-messages-` | `...-00019` |
+| `meta-month-` | `summary-window-of-whole-chat-from-months-` | `...-2025-11` |
+| `meta-chat-` | `summary-window-of-whole-chat-` | `summary-window-of-whole-chat-00000` |
+| `rel-` | `relevance-window-vote-` | `relevance-window-vote-00042-v1` |
+| `rel-solo-` | `relevance-window-vote-of-one-long-message-` | `...-593265-251115-v0` |
+| `photo-` | `photo-content-` | `photo-content-1199242-261122` |
+
+The `meta` prefix splits into 3, because the 3 rollup levels answer different
+questions: a rollup of 100-message windows, a rollup of months, and the one
+summary of the chat.
+
+## Group 4: the prompt file names
+
+A prompt file is named after the unit it asks about, so the name is the unit
+id plus `.txt`.
+
+| old prefix | new prefix | count |
+| --- | --- | --- |
+| `translate-` | `message-translation-` | 254 |
+| `w10-` | `summary-window-of-10-messages-` | 1042 |
+| `w100-` | `summary-window-of-100-messages-` | 105 |
+| `month-` | `summary-window-of-one-month-` | 13 |
+| `meta-w100-` | `summary-window-of-whole-chat-from-100-messages-` | 105 |
+| `meta-month-` | `summary-window-of-whole-chat-from-months-` | 13 |
+| `meta-chat-` | `summary-window-of-whole-chat-` | 1 |
+| `rel-` | `relevance-window-vote-` | 3033 |
+| `rel-solo-` | `relevance-window-vote-of-one-long-message-` | 930 |
+| `photo-` | `photo-content-` | 797 |
+
+## Group 5: the `out/` folder
+
+`out/` says nothing about what it holds. It holds the model answers, one file
+per unit, plus the runner state of each job.
+
+| old | new |
+| --- | --- |
+| `out/` | `model-answer/` |
+| `out/jobs/<job>/done/` | `model-answer/job/<job>/done/` |
+| `out/jobs/<job>/state.jsonl` | `model-answer/job/<job>/state.jsonl` |
+| `out/jobs/shrunk/` | `model-answer/shrunk-photo/` |
+
+The `logs/` folder keeps its name: `logs/<job>.progress.log` already states
+that it holds the progress line of 1 job.
+
+## What does not change
+
+- The `data/*.csv` table names. `data/messages.csv` and `data/photos.csv`
+  already name their object.
+- The `internal/` project folder names. They carry the tier, the project, and
+  the group.
+- The `cmd/` command names.
+- The `message_key` format `<telegram message id:06d>-<yymmdd>`, which names
+  the message it points at.
+## The trap: `month` is 2 different names
+
+`month` appears as a CSV column name and as a window kind. Only the window
+kind is renamed. A rename that touches the column name breaks every table.
+
+| site | what `month` is | action |
+| --- | --- | --- |
+| `messageRow["month"]` | the CSV column of a message | keep |
+| `"month"` in a `*TableColumnNames` list | the CSV column | keep |
+| `window.WindowKind = "month"` | the window kind | rename |
+| `WindowListOfSize(..., "w10")` | the window kind | rename |
+| `case "w10", "w100", "month", "meta"` | the job name | rename |
+| `"month-" + record.Month` | the window id prefix | rename |
+| `jobNameOfWindowId` returning `"w10"` | the job name | rename |
+
+The same trap applies to `photo`: `"photo"` is a `window_kind` in
+`data/index.csv`, a job name, a window id prefix, and a prompt prefix. All 4
+rename together, but `photo_path` and `photo_key` are column names and stay.
+
+## The 25 code sites the rename touches
+
+| file | lines | what it holds |
+| --- | --- | --- |
+| `t0-...-table/path/n0100` | 39 | the `out/` folder path |
+| `t1-...-translate/table/n0510` | 35 | the `translate` done folder |
+| `t2-...-relevance/window/n0700` | 50 | the `rel-solo-` window id prefix |
+| `t2-...-relevance/solo/n0730` | 44, 68 | the `rel` done folder, the `rel-solo-` prompt prefix |
+| `t2-...-relevance/consensus/n0741` | 149, 150 | the `rel` done folder, the fallback answer path |
+| `t2-...-summary/window/n0600` | 59 | the `month` window kind |
+| `t2-...-summary/prompt/n0610` | 171, 172 | the `w10` and `w100` window kinds |
+| `t2-...-aggregate/rollup/n0910` | 24, 26, 28, 130 | the 3 `meta-` window id prefixes, the `meta` window kind |
+| `t2-...-aggregate/parse/n0901` | 102, 151, 152, 164-175 | the `meta` kind test, the answer path, `jobNameOfWindowId` |
+| `t2-...-aggregate/index/n0920` | 51, 260 | the `w10` and `meta` window kinds |
+| `t2-...-photo/index/n0820` | 48, 65, 78 | the `photo` done folder, the `photo` window kind |
+| `t3-...-job/store/n1010` | 25 | the `out/jobs/<job>` path |
+| `t3-...-job/call/n1020` | 93 | the `out/jobs/shrunk` path |
+| `t4-...-chain/chainunit/n1100` | 13, 102-108 | `JobNameList` and the job switch |
+| `t4-...-chain/stage/n1110` | 52 | the `photo` job test |
+| `t4-...-chain/chainrun/n1120` | 110, 127, 147 | the 3 job lists |
+| `cmd/subcommand/n1200` | 173 | the job list printed by `job --help`, a hardcoded string that repeats `JobNameList` |
+
+`cmd/subcommand/n1200:173` is the 17th site. It repeats `JobNameList` as a
+literal, so a rename that misses it leaves `job --help` printing the old
+names. The fix is to build the help text from `chainunit.JobNameList`, so the
+list is written once.
+
+The `translate` subcommand name in `cmd/` is a rule stage, not a job, so it
+keeps its name. Only the job list at `chainrun/n1120:110` renames.

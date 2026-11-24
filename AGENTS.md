@@ -46,55 +46,89 @@ from the image export, and join the 2 on the message id.
 
 ## The chain
 
-Every stage is a Go package under `internal/`, and one command runs them all.
-There is no Python in this repository.
+Every stage is a Go package. A package sits in a project folder named
+`<tier>-transcriptextraction-<project>`, and a group of declarations inside
+that project is a sub-folder. There is no Python in this repository.
 
-| package | reads | writes |
+| group | reads | writes |
 | --- | --- | --- |
-| `internal/telegramexport` | `extract.telegram-log.vlad/result.json` | `data/messages.csv` and 6 side tables |
-| `internal/messagesplit` | `data/messages.csv` | `data/parts_unbroken.csv`, `parts_sentence.csv`, `parts_paragraph.csv`, `parts_manifest.csv` |
-| `internal/referenceextraction` | `data/messages.csv` | `data/references.csv` |
-| `internal/summarywindow` | `data/messages.csv`, `data/references.csv` | `data/windows.csv`, `prompts/` |
-| `internal/relevancewindow` | `data/messages.csv` | `data/relevance_windows.csv`, `prompts/rel-*.txt` |
-| `internal/relevancesolo` | `data/messages.csv` | `out/jobs/rel/done/rel-solo-*.txt` |
-| `internal/relevanceconsensus` | `out/jobs/rel/done/` | `data/relevance_votes.csv`, `data/relevance.csv` |
-| `internal/photoextraction` | `extract.telegram-log.vlad-images/result.json` | `data/photos.csv`, `prompts/photo-*.txt` |
-| `internal/phototable` | `out/jobs/photo/done/` | `data/photo_index.csv`, the photo rows of `data/index.csv` |
-| `internal/summaryaggregation` | `out/` | `data/summaries.csv`, `data/summary_items.csv`, `data/summary_rollup.csv`, `data/index*.csv`, `prompts/meta-*.txt` |
-| `internal/durablejob` | `prompts/`, `data/photos.csv` | `out/jobs/<job>/done/<id>.txt`, `logs/<job>.progress.log` |
-| `internal/jobunit` | `data/` | the unit list of one durable job |
-| `internal/pipelinechain` | — | runs the rule stages in order |
-| `internal/csvtable` | — | reads and writes a CSV table |
-| `internal/textrule` | — | the shared text rules: URLs, word counts, rune-safe cuts |
+| `t1-...-export/read` | `extract.telegram-log.vlad/result.json` | `data/messages.csv` and 6 side tables |
+| `t1-...-split/*` | `data/messages.csv` | `data/parts_unbroken.csv`, `parts_sentence.csv`, `parts_paragraph.csv`, `parts_manifest.csv` |
+| `t1-...-reference/collect` | `data/messages.csv` | `data/references.csv` |
+| `t1-...-translate/table` | `data/messages.csv` | `data/translations.csv`, `prompts/message-translation-*.txt` |
+| `t2-...-summary/window` | `data/messages.csv`, `data/references.csv`, `data/translations.csv` | `data/windows.csv`, `prompts/` |
+| `t2-...-relevance/window` | `data/messages.csv`, `data/translations.csv` | `data/relevance_windows.csv`, `prompts/relevance-window-vote-*.txt` |
+| `t2-...-relevance/solo` | `data/messages.csv` | `model-answer/job/relevance-window-vote/done/relevance-window-vote-of-one-long-message-*.txt` |
+| `t2-...-relevance/consensus` | `model-answer/job/relevance-window-vote/done/` | `data/relevance_votes.csv`, `data/relevance.csv` |
+| `t2-...-photo/table` | `extract.telegram-log.vlad-images/result.json` | `data/photos.csv`, `prompts/photo-content-*.txt` |
+| `t2-...-photo/index` | `model-answer/job/photo-content/done/` | `data/photo_index.csv`, the photo rows of `data/index.csv` |
+| `t2-...-aggregate/index` | `model-answer/` | `data/summaries.csv`, `data/summary_items.csv`, `data/summary_rollup.csv`, `data/index*.csv`, `prompts/summary-window-of-whole-chat-*.txt` |
+| `t3-...-job/run` | `prompts/`, `data/photos.csv` | `model-answer/job/<job>/done/<id>.txt`, `logs/<job>.progress.log` |
+| `t4-...-chain/chainunit` | `data/` | the unit list of one durable job |
+| `t4-...-chain/chainrun` | — | runs the rule stages in order |
+| `t0-...-table/table` | — | reads and writes a CSV table |
+| `t0-...-table/pattern` | — | the shared text rules: URLs, word counts, rune-safe cuts |
 
-`cmd/transcriptextraction` is the only entry point. Its subcommands are
-`extract`, `split`, `references`, `windows`, `relevance-windows`,
-`relevance-solo`, `relevance-consensus`, `photos`, `photo-index`, `aggregate`,
-`job`, and `pipeline`. `cmd/csvcheck` checks the column count of every CSV.
+`cmd/command` is the only entry point. Its subcommands are `extract`, `split`,
+`references`, `translate`, `windows`, `relevance-windows`, `relevance-solo`,
+`relevance-consensus`, `photos`, `photo-index`, `aggregate`, `job`, and
+`pipeline`. `cmd/csvcheck` checks the column count of every CSV.
 
 Run the rule stages with `./build.sh --rules`, then a model stage with
 `transcriptextraction job`.
+
+## The layout
+
+A project folder is named `<tier>-transcriptextraction-<project>`, and the
+tier is `t0` to `t4` or `te` for a command. A project imports only a project
+of a lower tier, so a stage never imports the chain that calls it.
+
+A group is a sub-folder of its project and is its own Go package. A file is
+named `nNNNN.<project>.[<group>].go`, where `nNNNN` is the number of its
+block: one project takes 100 numbers, and one group takes 10 inside that.
+A file holds one type, and the functions that follow it.
+
+`design.transcriptextraction-lexicographic-decomposition.txt` states the full
+project list, the group split, the number blocks, and the import order.
+`00-projects-and-groups.txt` is the short form of the same list.
 
 ## Build and run
 
 `./build.sh` compiles `cmd/transcriptextraction` and `cmd/csvcheck` into
 `.build/`, runs `go vet ./...`, checks that every subcommand answers `--help`
 with exit 0, and checks that every CSV in `data/` has the column count its
-header states. `./build.sh --clean` removes `data/`, `out/`, `prompts/`, and
+header states. `./build.sh --clean` removes `data/`, `model-answer/`, `prompts/`, and
 `logs/` first. `./build.sh --rules` also runs the rule stages, which make no
 model call.
 
 A model stage runs through `transcriptextraction job`, which is durable:
 
 ```
-.build/transcriptextraction job --job rel --jobs 8 --poll 30
-.build/transcriptextraction job --job rel --status
+.build/transcriptextraction job --job relevance-window-vote --jobs 8 --poll 30
+.build/transcriptextraction job --job relevance-window-vote --status
 ```
 
-The job writes one answer file per unit under `out/jobs/<job>/done/`, and a
+The 7 job names, and what one answer of each holds:
+
+| job name | one answer holds |
+| --- | --- |
+| `message-translation` | the English text of 1 message that holds Cyrillic |
+| `summary-window-of-10-messages` | the 14-field summary of 10 consecutive messages |
+| `summary-window-of-100-messages` | the 14-field summary of 100 consecutive messages |
+| `summary-window-of-one-month` | the 14-field summary of 1 calendar month |
+| `summary-window-of-whole-chat` | the 14-field summary of the whole chat, rolled up from the months |
+| `relevance-window-vote` | 1 vote on whether a window of messages is relevant to machine learning |
+| `photo-content` | what 1 photo shows, its text, topic, relevance, numbers, and terms |
+
+A job name is also the `window_kind` value of `data/windows.csv` and the
+prefix of a `window_id`, so the 3 agree by construction. The constants sit in
+`internal/t4-...-chain/chainunit/n1099...go` and
+`internal/t2-...-summary/window/n0599...go`.
+
+The job writes one answer file per unit under `model-answer/job/<job>/done/`, and a
 unit is done when that file exists. A killed run resumes where it stopped. The
 progress line prints every `--poll` seconds and goes to
-`logs/<job>.progress.log`, so `tail -f logs/rel.progress.log` shows
+`logs/<job>.progress.log`, so `tail -f logs/relevance-window-vote.progress.log` shows
 `done/total`, the rate, the ETA, and the calls in flight.
 
 The job names the provider, not just the model. A bare model name matches 9
@@ -119,8 +153,8 @@ per paragraph, and a code fence stays whole. Every mode covers the same
 
 10-message windows roll into 100-message windows, those roll into months, and
 the months roll into one summary of the chat. A rollup is a model answer, not
-a string join: `internal/summaryaggregation` writes `prompts/meta-*.txt` and
-`transcriptextraction job --job meta` answers it.
+a string join: `internal/summaryaggregation` writes `prompts/summary-window-of-whole-chat-*.txt` and
+`transcriptextraction job --job summary-window-of-whole-chat` answers it.
 
 ## The photo stage
 
@@ -130,25 +164,46 @@ relevance to machine learning, the numbers it states, and the terms it shows.
 
 The photo stage needs a model that accepts image input. The default model
 `deepseek-v4.1-flash-1017` on `local-dgx1` reads text only, so pass
-`--model` and `--provider` naming a vision model.
+`--model` and `--provider` naming a vision model. The provider is the full
+`provider.model` string, for example
+`--model glm-5.3-flash --provider zai.glm-5.3-flash-128k`. A bare
+`--provider zai` answers `No API key found for zai`.
+
+## The translation stage
+
+254 of the 10411 messages hold Cyrillic. A prompt built from that text asks
+the model a question in Russian, so the stage translates those messages first
+and every later prompt reads the English.
+
+`t1-...-translate/table` writes `data/translations.csv` with the columns
+`message_key`, `message_id`, `date`, `from`, `text_en`, `source_char_len`, and
+`english_char_len`. A message with no Cyrillic keeps its own text, so the
+table holds every message a prompt needs.
+
+`t3-...-job/answer` rejects an answer that repeats the source text or keeps
+most of its Cyrillic letters, so an untranslated answer is retried and never
+saved. A fragment, a URL, a name, or an English sentence that quotes a Russian
+example needs no translation, and the check accepts it.
 
 ## Folders
 
 - `data/` holds the CSV tables, and it is the source of truth for every later stage.
 - `prompts/` holds one prompt file per window and per photo.
-- `out/` holds one answer file per window and per photo, plus
-  `out/jobs/<job>/` for the durable runner, which keeps its state in
-  `out/jobs/<job>/state.jsonl`.
+- `model-answer/` holds one answer file per window and per photo, plus
+  `model-answer/job/<job>/` for the durable runner, which keeps its state in
+  `model-answer/job/<job>/state.jsonl`.
 - `logs/` holds `<job>.progress.log` for each durable job.
-- `internal/` holds one package per stage, and `cmd/` holds the 2 commands.
+- `internal/` holds the tier projects and their groups, and `cmd/` holds the
+  2 commands.
 - `build.sh` at the repository root builds and checks the pipeline.
 
 ## Go only
 
-This repository holds Go and no Python. A stage is a package under
-`internal/`, and `cmd/` holds the commands that call it. A new stage adds a
-package, a subcommand, and a row in the chain table above. Do not add a
-script in another language, and do not call one from `build.sh`.
+This repository holds Go and no Python. A stage is a group under
+`internal/<tier>-transcriptextraction-<project>/`, and `cmd/` holds the
+commands that call it. A new stage adds a group, a subcommand, and a row in
+the chain table above. Do not add a script in another language, and do not
+call one from `build.sh`.
 
 ## Naming
 
@@ -168,9 +223,9 @@ and the table it belongs to (the window table) without opening the file.
 
 | name | reads as |
 | --- | --- |
-| `referenceextraction.TermPatternOf` | a function in the reference-extraction package that returns the pattern of one term |
-| `summarywindow.PromptCharBudget` | a constant in the summary-window package: the character budget of one prompt |
-| `durablejob.AnswerWrongnessOf` | a function in the durable-job package that returns why one model answer is wrong |
+| `refpattern.TermPatternOf` | a function in the reference-pattern group that returns the pattern of one term |
+| `prompt.PromptCharBudget` | a constant in the summary-prompt group: the character budget of one prompt |
+| `answer.AnswerWrongnessOf` | a function in the job-answer group that returns why one model answer is wrong |
 
 A name that needs a comment to explain it is wrong, so rename it. Never write
 `var`, `tmp`, `buf`, `res`, `val`, `data`, `info`, `obj`, or `item` as a name:

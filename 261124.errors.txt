@@ -1,0 +1,1 @@
+2026-11-24 `./build.sh --rules` printed `wrote 0 translations data/translations.csv (254 Cyrillic messages still unanswered)`. Expected 254 rows. Cause: the translate stage now reads `model-answer/job/message-translation/done/`, but the 254 answers still sit in `out/jobs/translate/done/`. Fixed by the migration in task-5.

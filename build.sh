@@ -32,7 +32,7 @@ clean() {
 check_compile() {
   echo "== compile =="
   mkdir -p "$BUILD_FOLDER"
-  (cd "$ROOT" && go build -o "$PIPELINE_BINARY" ./cmd/transcriptextraction)
+  (cd "$ROOT" && go build -o "$PIPELINE_BINARY" ./cmd/command)
   (cd "$ROOT" && go build -o "$CSVCHECK_BINARY" ./cmd/csvcheck)
   echo "ok: every package compiles"
 }

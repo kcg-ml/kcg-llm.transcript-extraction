@@ -37,22 +37,49 @@ and for 6 new behaviours. The group count fell as asked, and the file count
 rose because the behaviours are new. A merge that also added 6 behaviours
 cannot shrink the line count.
 
-## Req 4: the 2 kill rules
+## Req 4: the 2 kill rules, and the first byte
 
 A call is killed for a stall in 2 ways, and the failure file says which:
 
 | rule | fires when | reason text |
 | --- | --- | --- |
-| no growth | stdout has not grown for `--stall` seconds | `stall: no output for 3s, process killed` |
-| trickle | the call has run 30s and writes under 10 chars/s | `stall: trickled 0.50 chars/s for 30s, under the 10 chars/s floor, process killed` |
+| no growth | stdout has not grown for `--stall` seconds, after the first byte | `stall: no output for 3s, process killed` |
+| trickle | the call has written for 30s and writes under 10 chars/s | `stall: trickled 0.53 chars/s for 30s, under the 10 chars/s floor, process killed` |
 
-The trickle rule measures the rate from the start of the call, not from the
-last growth. A provider that writes 1 character every 2 seconds keeps the
-growth clock moving, so the no-growth rule never fires on it and the call
-would hold its worker until the timeout and be recorded as a timeout.
+**Neither rule judges a call before its first byte.** The provider this
+pipeline uses does not stream: it holds the whole answer and writes it at the
+end. Measured directly against `pi`:
 
-Both rules have a Go test in `call/n9900.call.call._test.go`. The trickle test
-kills at 30.0s and the no-growth test at 3.0s.
+| prompt | total | first byte | chars |
+| --- | --- | --- | --- |
+| 7191 chars | 7.7s | 5.7s | 962 |
+| 181224 chars | 330.2s | 328.2s | 141565 |
+
+So the time before the first byte is the provider thinking, not the call
+stalling. The first version of the trickle rule measured from the start of the
+call and killed 24 whole-chat units at 30s with 0 chars, and it would have
+killed 30% of the 5194 healthy calls, which took over 30s, and 6% that took
+over 90s. The rule now measures from the first byte, and a call with no output
+yet is bounded by the timeout alone.
+
+The trickle rule measures the rate from the first byte, not from the last
+growth. A provider that writes 1 character every 2 seconds keeps the growth
+clock moving, so the no-growth rule never fires on it and the call would hold
+its worker until the timeout and be recorded as a timeout.
+
+3 Go tests in `call/n9900.call.call._test.go` cover this: a late whole answer
+survives (60.4s, 63 chars), a trickle is killed at 33.5s, a call that stops
+after its first byte is killed at 3.5s, and a silent call is bounded by the
+timeout at 5.0s.
+
+## The exit codes
+
+A job ends with a code that says why it stopped: 0 ok, 1 a settings or store
+error, 2 units failed, 3 another process holds the lock. The command layer
+turned every error into exit 1, so a script could not tell a lock refusal from
+a failure. `subcommand.ExitCodeError` now carries the code through, and
+`subcommand.ExitCodeOf` reads it. Verified: a second run on a held lock exits
+3, and a bad flag still exits 1.
 
 ## Req 6: the calls in flight
 

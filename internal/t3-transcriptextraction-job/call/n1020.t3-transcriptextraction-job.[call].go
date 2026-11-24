@@ -111,6 +111,16 @@ func CallPi(projectFolderPath string, promptText string, settings store.JobSetti
 			case <-watcherStopChannel:
 				return
 			case <-tickerHandle.C:
+				// The provider this pipeline uses does not stream: it holds
+				// the whole answer and writes it at the end, so the time
+				// before the first byte is the provider thinking and not the
+				// call stalling. A measured 181224-char prompt answered in
+				// 330s with its first byte at 328s. Neither rule may judge
+				// the call before that byte arrives, or a healthy call is
+				// killed for being slow to start.
+				if !stdoutWatch.HasFirstByte() {
+					continue
+				}
 				stoodStillSeconds := stdoutWatch.SecondsSinceGrowth()
 				if stoodStillSeconds >= stallSeconds {
 					stallChannel <- StallRecord{KindText: StallKindNoGrowth,
@@ -118,15 +128,17 @@ func CallPi(projectFolderPath string, promptText string, settings store.JobSetti
 					cancelHandle()
 					return
 				}
-				// The trickle rule. A call that has run past the grace
+				// The trickle rule. A call that has written for the grace
 				// period and still writes under the floor rate cannot finish
 				// its answer, so it is killed as a stall and not as a
-				// timeout.
-				elapsedCallSeconds := stdoutWatch.SecondsSinceStart()
-				if elapsedCallSeconds >= TrickleGraceSeconds &&
+				// timeout. The clock starts at the first byte, so a call
+				// that writes its whole answer in one late write is not
+				// judged on the time it spent thinking.
+				writingSeconds := stdoutWatch.SecondsSinceFirstByte()
+				if writingSeconds >= TrickleGraceSeconds &&
 					stdoutWatch.CharRatePerSecond() < TrickleCharRatePerSecond {
 					stallChannel <- StallRecord{KindText: StallKindTrickle,
-						SecondCount: elapsedCallSeconds,
+						SecondCount: writingSeconds,
 						CharRate:    stdoutWatch.CharRatePerSecond()}
 					cancelHandle()
 					return

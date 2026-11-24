@@ -214,7 +214,8 @@ func RunJob(projectFolderPath string, argumentList []string) error {
 	}
 	exitCode := run.Run(projectFolderPath, settings, unitList)
 	if exitCode != 0 {
-		return fmt.Errorf("job %s exited with code %d", *jobName, exitCode)
+		return &ExitCodeError{Code: exitCode,
+			ReasonText: fmt.Sprintf("job %s exited with code %d", *jobName, exitCode)}
 	}
 	return nil
 }

@@ -42,7 +42,7 @@ A call is killed for a stall in 2 ways, and the failure file says which:
 Both rules are distinct from the timeout: a stall exits 125 and writes
 `"stall": true`, and a timeout exits 124 and writes `"stall": false`.
 
-### The stall bound is per job, and it is above the time to the first byte
+### The stall bound is per job: 90s, or above the slowest measured call
 
 The provider this pipeline uses does not stream: it holds the whole answer
 and writes it at the end. Measured directly against `pi`:
@@ -58,23 +58,36 @@ start of the call and killed 24 whole-chat units at 30s with 0 chars, and it
 would have killed 30% of the 5194 healthy calls (1537 took over 30s) and 6%
 (318 took over 90s).
 
-`chainunit.StallSecondsOf` returns 2 x the job's timeout, which is above the
-slowest measured time-to-first-byte of every job:
+`chainunit.StallSecondsOf` returns the larger of 90s and 15% above the
+slowest measured call of the job, and every bound is under that job's
+timeout, so the stall rule fires before the timeout and the failure says
+which:
 
-| job | timeout | stall bound |
-| --- | --- | --- |
-| message-translation | 145s | 290s |
-| summary-window-of-10-messages | 483s | 966s |
-| summary-window-of-100-messages | 1206s | 2412s |
-| summary-window-of-one-month | 1901s | 3802s |
-| summary-window-of-whole-chat | 2015s | 4030s |
-| relevance-window-vote | 212s | 424s |
-| photo-content | 173s | 346s |
-| idea-extraction | 483s | 966s |
+| job | slowest call | stall bound | timeout |
+| --- | --- | --- | --- |
+| message-translation | 46.9s | 90s | 145s |
+| photo-content | 84.0s | 97s | 173s |
+| relevance-window-vote | 200.7s | 205s | 212s |
+| summary-window-of-10-messages | 209.3s | 241s | 483s |
+| summary-window-of-100-messages | 380.1s | 438s | 1206s |
+| summary-window-of-one-month | 475.3s | 547s | 1901s |
+| summary-window-of-whole-chat | 547.6s | 630s | 2015s |
+| idea-extraction | 8.3s | 90s | 483s |
 
-`--stall` overrides the bound. A call that writes nothing for its bound is
-hung rather than slow, so it is killed as a stall and does not hold its worker
-until the timeout.
+The `--stall` default is 90s, which is the floor of the table, so a job whose
+bound is 90s takes the flag value and a job above it takes its own. `--stall
+0` also takes the job's bound.
+
+`relevance-window-vote` is the tight case: its slowest healthy call is 200.7s
+and its timeout is 212s, so a bound 15% above the slowest call would be 231s
+and the timeout would kill first. 205s keeps both rules live.
+
+2 tests in `chainunit/n9900.chainunit.chainunit._test.go` hold the table
+honest: `TestStallBoundIsUnderTheTimeout` fails if any bound reaches its
+timeout, and `TestStallBoundIsAboveTheSlowestMeasuredCall` fails if any bound
+is at or under a measured healthy call. The second test caught a real defect
+while it was being written: the first table gave relevance 190s, under its
+200.7s call.
 
 ### The verification
 

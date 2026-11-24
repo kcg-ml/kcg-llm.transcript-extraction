@@ -178,7 +178,7 @@ func AddJobFlags(flagSet *flag.FlagSet, settings *store.JobSettings) {
 	flagSet.IntVar(&settings.RetryCount, "retries", 2, "retries of one unit")
 	flagSet.IntVar(&settings.RetrySleepSeconds, "retry-sleep", 5,
 		"seconds between retries")
-	flagSet.IntVar(&settings.StallSeconds, "stall", 0,
+	flagSet.IntVar(&settings.StallSeconds, "stall", 90,
 		"seconds a call may go without growing its output before it is killed; "+
 			"0 uses the bound measured for the job")
 	flagSet.BoolVar(&settings.ProbeOnly, "probe", false,
@@ -212,6 +212,12 @@ func RunJob(projectFolderPath string, argumentList []string) error {
 	settings.JobName = *jobName
 	if settings.TimeoutSeconds == 0 {
 		settings.TimeoutSeconds = chainunit.TimeoutSecondsOf(*jobName)
+	}
+	if settings.StallSeconds == 90 {
+		// 90 is the default, and it is also the floor of the measured
+		// bounds. A job whose measured bound is above 90 takes its own, so
+		// a healthy slow call is not killed by the default.
+		settings.StallSeconds = chainunit.StallSecondsOf(*jobName)
 	}
 	if settings.StallSeconds == 0 {
 		settings.StallSeconds = chainunit.StallSecondsOf(*jobName)

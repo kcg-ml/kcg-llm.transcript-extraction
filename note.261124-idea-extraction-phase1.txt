@@ -25,21 +25,39 @@ whole argument of a window, so a later phase takes them.
 ## The prompt file name carries the prefix
 
 The idea prompt is `prompts/idea-extraction-<window_id>.txt`, not
-`prompts/<window_id>.txt`. Both this stage and the summary stage read the same
-10-message windows, so a shared file name lets one stage overwrite the other's
-prompt. The first version of this stage did exactly that and destroyed 1042
+`prompts/<window_id>.txt`. Both this stage and the summary stage name their
+prompt after the same 10-message window id, so a shared file name lets one
+stage overwrite the other's prompt. The first version of this stage did exactly that and destroyed 1042
 summary prompts; `transcriptextraction windows` restored them, and `git status
 prompts/` then showed no change.
+
+## What the prompt reads
+
+The prompt holds the 10-message summary of the window first, then the
+messages themselves. The summary is the text this stage extracts from: it
+already names the papers, talks, repositories, methods, and models of the
+window, in one place. The messages follow so the model can find the message id
+of each entry, because the summary table holds no message id.
+
+The first version of this stage read the raw messages only and never read a
+summary. An auditor rejected that as a different stage from the one the
+objective names, and the prompt was rewritten to read the summary.
+
+A bare Telegram id is resolved against `data/messages.csv`, because the model
+sometimes writes `593111` where the prompt asks for `593111-251120`. Without
+that resolution 5 of the 17 rows of the second sample carried no message key.
 
 ## Measured on 5 windows
 
 | measure | value |
 | --- | --- |
-| probe, 1 call | 10.8s, 1388 chars, 128.9 chars/s |
-| 5-window sample | 5 of 5 ok, 0 failed, 9.5s for the last answer |
-| items from 5 windows | 19 rows, every row carries a message key |
+| probe, 1 call, summary-reading prompt | 7.4s, 1079 chars, 145.2 chars/s |
+| 5-window sample | 5 of 5 ok, 0 failed, 8.3s for the last answer |
+| items from 5 windows | 17 rows, every row carries a message key |
 
-The 19 rows split as METHODS 11, TALKS 4, PAPERS 3, MODELS 1, CODE 0.
+The 17 rows split as METHODS 9, TALKS 4, PAPERS 2, MODELS 1, CODE 1. Every
+message key was checked against `data/messages.csv` and all 17 resolve to a
+real message.
 
 ## The timeout is an estimate, not a measurement
 

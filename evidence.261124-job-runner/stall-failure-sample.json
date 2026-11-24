@@ -1,0 +1,9 @@
+{
+ "attempt": 1,
+ "chars": 0,
+ "code": 125,
+ "error": "stall: no output for 3s, process killed",
+ "seconds": 3,
+ "stall": true,
+ "unit_id": "relevance-window-vote-00807-v2"
+}

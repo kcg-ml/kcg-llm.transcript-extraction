@@ -1,0 +1,4 @@
+2026-11-24T13:58:25  unit=relevance-window-vote-00807-v2  attempt=1  exit=125  seconds=3  chars=0  reason=stall: no output for 3s, process killed
+2026-11-24T13:58:28  unit=relevance-window-vote-00808-v2  attempt=1  exit=125  seconds=3  chars=0  reason=stall: no output for 3s, process killed
+2026-11-24T13:58:31  unit=relevance-window-vote-00809-v2  attempt=1  exit=125  seconds=3  chars=0  reason=stall: no output for 3s, process killed
+2026-11-24T13:58:34  unit=relevance-window-vote-00810-v2  attempt=1  exit=125  seconds=3  chars=0  reason=stall: no output for 3s, process killed

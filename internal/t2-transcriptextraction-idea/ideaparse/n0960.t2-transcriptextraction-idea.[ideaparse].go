@@ -32,6 +32,14 @@ var IdeaAnswerLinePattern = regexp.MustCompile(`^\s*\**([A-Z]+)\**\s*:\s*(.*)$`)
 // prompt asks for.
 var IdeaMessageKeyPattern = regexp.MustCompile(`([0-9]{6}-[0-9]{6})`)
 
+// IdeaBareMessageIdPattern matches a Telegram message id with no date part.
+//
+// The model sometimes writes `593111` where the prompt asks for
+// `593111-251120`. The date part is the message's own date, so the id is
+// resolved against the window rather than dropped: an entry with no id
+// cannot be checked, and the id is the point of the table.
+var IdeaBareMessageIdPattern = regexp.MustCompile(`(?:^|[^0-9-])([0-9]{6})(?:[^0-9-]|$)`)
+
 // IdeaAnswerFieldMap returns the 5 field values of one model answer.
 func IdeaAnswerFieldMap(answerText string) map[string]string {
 	fieldValueMap := make(map[string]string, len(ideaprompt.IdeaFieldList))
@@ -76,12 +84,21 @@ func IdeaItemTextListOf(fieldValueText string) []string {
 // The last key of an entry is the one the prompt asks for, because the entry
 // is `<name> | <what it is> | <message id>`. A paper title can hold no key, so
 // the last match is the trailing id.
-func MessageKeyOfItem(itemText string) string {
+//
+// A bare Telegram id is resolved against the window's messages, because the
+// model sometimes writes `593111` where the prompt asks for `593111-251120`.
+func MessageKeyOfItem(itemText string, messageKeyByMessageId map[string]string) string {
 	keyList := IdeaMessageKeyPattern.FindAllString(itemText, -1)
-	if len(keyList) == 0 {
-		return ""
+	if len(keyList) > 0 {
+		return keyList[len(keyList)-1]
 	}
-	return keyList[len(keyList)-1]
+	bareMatchList := IdeaBareMessageIdPattern.FindAllStringSubmatch(itemText, -1)
+	for matchIndex := len(bareMatchList) - 1; matchIndex >= 0; matchIndex-- {
+		if messageKey, keyFound := messageKeyByMessageId[bareMatchList[matchIndex][1]]; keyFound {
+			return messageKey
+		}
+	}
+	return ""
 }
 
 // ItemHeadTextOf returns the name part of one entry, which is the text before
@@ -92,6 +109,21 @@ func ItemHeadTextOf(itemText string) string {
 		return pattern.CutRuneText(itemText, 120)
 	}
 	return pattern.CutRuneText(strings.TrimSpace(itemText[:pipeIndex]), 120)
+}
+
+// messageKeyByMessageIdOf returns the message key of every message, by the
+// bare Telegram message id.
+func messageKeyByMessageIdOf(projectFolderPath string) (map[string]string, error) {
+	messageTable, readError := table.ReadTable(
+		filepath.Join(projectFolderPath, "data", "messages.csv"))
+	if readError != nil {
+		return nil, readError
+	}
+	messageKeyByMessageId := make(map[string]string, len(messageTable.DataRows))
+	for _, messageRow := range messageTable.DataRows {
+		messageKeyByMessageId[messageRow["message_id"]] = messageRow["message_key"]
+	}
+	return messageKeyByMessageId, nil
 }
 
 // Run reads every answer of the idea job and writes data/idea_items.csv.
@@ -108,6 +140,13 @@ func Run(projectFolderPath string) error {
 	}
 	answerFolderPath := filepath.Join(projectFolderPath, "model-answer", "job",
 		JobNameIdeaExtraction, "done")
+
+	// A bare message id is resolved against the whole chat, so the id the
+	// model wrote as `593111` becomes the key `593111-251120`.
+	messageKeyByMessageId, messageError := messageKeyByMessageIdOf(projectFolderPath)
+	if messageError != nil {
+		return messageError
+	}
 
 	itemTable := table.NewTable(ideaprompt.IdeaItemTableColumnNames)
 	answeredCount := 0
@@ -132,7 +171,7 @@ func Run(projectFolderPath string) error {
 					"item_index":        fmt.Sprintf("%d", itemIndex),
 					"item":              itemText,
 					"item_head":         ItemHeadTextOf(itemText),
-					"message_key":       MessageKeyOfItem(itemText),
+					"message_key":       MessageKeyOfItem(itemText, messageKeyByMessageId),
 				})
 			}
 		}

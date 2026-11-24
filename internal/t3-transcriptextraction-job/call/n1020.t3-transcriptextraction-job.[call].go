@@ -40,7 +40,11 @@ func (callResult PiCallResult) IsStall() bool {
 // its timeout is killed, because a child that holds the pipe open would
 // otherwise keep the call alive past its timeout. A call whose output stops
 // growing for stallSeconds is killed sooner, because a hung provider would
-// otherwise hold its worker for the whole timeout.
+// otherwise hold its worker for the whole timeout. A call that keeps writing
+// but writes under TrickleCharRatePerSecond is killed at
+// TrickleGraceSeconds, because a provider that trickles 1 character every 2
+// seconds moves the growth clock and would otherwise hold its worker for the
+// whole timeout and then be recorded as a timeout rather than a stall.
 func CallPi(projectFolderPath string, promptText string, settings store.JobSettings,
 	imageFilePath string) PiCallResult {
 	commandArgumentList := []string{"--print", "--no-tools", "--no-session",
@@ -92,7 +96,7 @@ func CallPi(projectFolderPath string, promptText string, settings store.JobSetti
 	// goroutine then returns, so the watcher must stop before the buffers
 	// are read.
 	stallSeconds := float64(settings.StallSeconds)
-	stallChannel := make(chan float64, 1)
+	stallChannel := make(chan StallRecord, 1)
 	watcherStopChannel := make(chan struct{})
 	watcherDoneChannel := make(chan struct{})
 	go func() {
@@ -109,7 +113,21 @@ func CallPi(projectFolderPath string, promptText string, settings store.JobSetti
 			case <-tickerHandle.C:
 				stoodStillSeconds := stdoutWatch.SecondsSinceGrowth()
 				if stoodStillSeconds >= stallSeconds {
-					stallChannel <- stoodStillSeconds
+					stallChannel <- StallRecord{KindText: StallKindNoGrowth,
+						SecondCount: stoodStillSeconds}
+					cancelHandle()
+					return
+				}
+				// The trickle rule. A call that has run past the grace
+				// period and still writes under the floor rate cannot finish
+				// its answer, so it is killed as a stall and not as a
+				// timeout.
+				elapsedCallSeconds := stdoutWatch.SecondsSinceStart()
+				if elapsedCallSeconds >= TrickleGraceSeconds &&
+					stdoutWatch.CharRatePerSecond() < TrickleCharRatePerSecond {
+					stallChannel <- StallRecord{KindText: StallKindTrickle,
+						SecondCount: elapsedCallSeconds,
+						CharRate:    stdoutWatch.CharRatePerSecond()}
 					cancelHandle()
 					return
 				}
@@ -123,18 +141,25 @@ func CallPi(projectFolderPath string, promptText string, settings store.JobSetti
 	elapsedSeconds := time.Since(startedAt).Seconds()
 	stdoutText := stdoutWatch.Text()
 
-	stallSecondCount := 0.0
+	stallRecord := StallRecord{}
 	select {
-	case stallSecondCount = <-stallChannel:
+	case stallRecord = <-stallChannel:
 	default:
 	}
-	if stallSecondCount > 0 {
+	if stallRecord.SecondCount > 0 {
+		stallReasonText := fmt.Sprintf("stall: no output for %.0fs, process killed",
+			stallRecord.SecondCount)
+		if stallRecord.KindText == StallKindTrickle {
+			stallReasonText = fmt.Sprintf(
+				"stall: trickled %.2f chars/s for %.0fs, under the %.0f chars/s floor, process killed",
+				stallRecord.CharRate, stallRecord.SecondCount, TrickleCharRatePerSecond)
+		}
 		return PiCallResult{
 			ExitCode:     125,
 			StdoutText:   stdoutText,
-			StderrText:   fmt.Sprintf("stall: no output for %.0fs, process killed", stallSecondCount),
+			StderrText:   stallReasonText,
 			SecondCount:  elapsedSeconds,
-			StallSeconds: stallSecondCount,
+			StallSeconds: stallRecord.SecondCount,
 			CharCount:    len(stdoutText),
 		}
 	}

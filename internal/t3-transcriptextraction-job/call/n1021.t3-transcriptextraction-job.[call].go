@@ -15,6 +15,7 @@ import (
 type StallWatchBuffer struct {
 	lockHandle        sync.Mutex
 	outputBuffer      bytes.Buffer
+	startedAt         time.Time
 	lastGrowthAt      time.Time
 	growthCount       int
 	lastGrowthCharLen int
@@ -22,7 +23,8 @@ type StallWatchBuffer struct {
 
 // NewStallWatchBuffer returns an empty buffer whose growth clock starts now.
 func NewStallWatchBuffer() *StallWatchBuffer {
-	return &StallWatchBuffer{lastGrowthAt: time.Now()}
+	nowTime := time.Now()
+	return &StallWatchBuffer{startedAt: nowTime, lastGrowthAt: nowTime}
 }
 
 // Write appends the output and moves the growth clock.
@@ -64,4 +66,28 @@ func (watchBuffer *StallWatchBuffer) GrowthCount() int {
 	watchBuffer.lockHandle.Lock()
 	defer watchBuffer.lockHandle.Unlock()
 	return watchBuffer.growthCount
+}
+
+// SecondsSinceStart returns how long the call has been running.
+func (watchBuffer *StallWatchBuffer) SecondsSinceStart() float64 {
+	watchBuffer.lockHandle.Lock()
+	defer watchBuffer.lockHandle.Unlock()
+	return time.Since(watchBuffer.startedAt).Seconds()
+}
+
+// CharRatePerSecond returns the output rate over the whole call.
+//
+// The rate is measured from the start, not from the last growth, because the
+// trickle rule asks whether the call has produced enough by now. A call that
+// writes 1 character every 2 seconds keeps its growth clock moving, so the
+// no-growth rule never fires on it, and only this rate shows that it is too
+// slow to finish.
+func (watchBuffer *StallWatchBuffer) CharRatePerSecond() float64 {
+	watchBuffer.lockHandle.Lock()
+	defer watchBuffer.lockHandle.Unlock()
+	elapsedSeconds := time.Since(watchBuffer.startedAt).Seconds()
+	if elapsedSeconds <= 0 {
+		return 0
+	}
+	return float64(watchBuffer.outputBuffer.Len()) / elapsedSeconds
 }

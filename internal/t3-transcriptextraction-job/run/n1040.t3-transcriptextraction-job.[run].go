@@ -113,8 +113,9 @@ func FormatEtaText(secondCount float64) string {
 //
 // The rate and the ETA cover the last 60 seconds, so a stalled run shows its
 // rate falling to 0 and its ETA growing, which is what a reader needs to see.
-// The failed count is on the line, because a run that answers 200 units and
-// fails 200 is not half done.
+// The failed count and the pending count are both on the line, because a run
+// that answers 200 units and fails 200 is not half done, and a reader needs
+// the count still to do without subtracting 2 numbers.
 func ProgressLineOf(store *store.JobStore, unitList []store.JobUnit,
 	counters *RunCounters) string {
 	totalCount := len(unitList)
@@ -134,13 +135,23 @@ func ProgressLineOf(store *store.JobStore, unitList []store.JobUnit,
 	if totalCount > 0 {
 		percentValue = 100.0 * float64(doneCount) / float64(totalCount)
 	}
-	return fmt.Sprintf("[%s] %d/%d  %5.1f%%  ok=%d fail=%d  rate=%.2f/s  eta=%s  inflight=%d  last=%s",
+	return fmt.Sprintf("[%s] %d/%d  %5.1f%%  ok=%d fail=%d pending=%d  rate=%.2f/s  eta=%s  inflight=%d  last=%s",
 		time.Now().Format("15:04:05"), doneCount, totalCount, percentValue,
-		okCount, failedCount, ratePerSecond, FormatEtaText(etaSecondCount),
-		inFlightCount, lastText)
+		okCount, failedCount, remainingCount, ratePerSecond,
+		FormatEtaText(etaSecondCount), inFlightCount, lastText)
 }
 
 // RoundToTenth rounds a second count to 1 decimal place.
 func RoundToTenth(secondCount float64) float64 {
 	return float64(int(secondCount*10+0.5)) / 10
+}
+
+// LiveStatusSeconds is how often a running job writes its live counts, so
+// `--status` can name the calls in flight without waiting for a poll.
+const LiveStatusSeconds = 2
+
+// writeLiveStatusOf writes the live counts of the running job.
+func writeLiveStatusOf(jobStore *store.JobStore, counters *RunCounters) {
+	okCount, inFlightCount, lastUnitId, lastSecondCount := counters.snapshot()
+	jobStore.WriteLiveStatus(okCount, inFlightCount, lastUnitId, lastSecondCount)
 }

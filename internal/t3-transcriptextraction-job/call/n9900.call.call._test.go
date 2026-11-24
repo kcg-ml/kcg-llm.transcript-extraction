@@ -100,22 +100,28 @@ func TestNoGrowthIsKilledAsStall(t *testing.T) {
 	t.Logf("killed: %s", callResult.StderrText)
 }
 
-// TestSilentCallIsBoundedByTimeout proves a call that never writes is bounded
-// by the timeout and not killed as a stall.
+// TestSilentCallIsKilledAsStall proves a call that never writes is killed at
+// the stall bound and recorded as a stall, not left to the timeout.
 //
-// The provider holds the whole answer and writes it at the end, so a call
-// with no output yet may be thinking. Only the timeout bounds it.
-func TestSilentCallIsBoundedByTimeout(t *testing.T) {
+// This is the requirement's own verification: a fake `pi` that sleeps without
+// output is killed at the stall bound, and the failure says stall.
+func TestSilentCallIsKilledAsStall(t *testing.T) {
 	writeFakePi(t, "sleep 300\n")
 	settings := jobSettingsForTest()
-	settings.TimeoutSeconds = 5
+	settings.TimeoutSeconds = 600
 	settings.StallSeconds = 3
+	startedAt := time.Now()
 	callResult := CallPi(t.TempDir(), "prompt", settings, "")
-	if callResult.IsStall() {
-		t.Fatalf("a silent call was killed as a stall: %s", callResult.StderrText)
+	elapsedSeconds := time.Since(startedAt).Seconds()
+	if !callResult.IsStall() {
+		t.Fatalf("a silent call was not killed as a stall: exit=%d %s",
+			callResult.ExitCode, callResult.StderrText)
 	}
-	if callResult.ExitCode != 124 {
-		t.Fatalf("expected the timeout exit 124, got %d", callResult.ExitCode)
+	if callResult.ExitCode != 125 {
+		t.Fatalf("expected the stall exit 125, got %d", callResult.ExitCode)
 	}
-	t.Logf("bounded by the timeout: %s", callResult.StderrText)
+	if elapsedSeconds > 6 {
+		t.Fatalf("expected the kill at the 3s stall bound, took %.1fs", elapsedSeconds)
+	}
+	t.Logf("killed at %.1fs: %s", elapsedSeconds, callResult.StderrText)
 }

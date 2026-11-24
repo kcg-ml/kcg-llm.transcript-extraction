@@ -20,3 +20,6 @@ extract.telegram-log.vlad-images/
 
 # Files moved aside by a rename, kept on disk but not in the history.
 cleanup/
+
+# One-off restructure helpers. This repository holds Go and no Python.
+tools/

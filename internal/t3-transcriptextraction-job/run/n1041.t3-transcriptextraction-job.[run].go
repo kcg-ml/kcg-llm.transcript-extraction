@@ -25,6 +25,7 @@ type JobStatusReport struct {
 	EtaText             string
 	LastAnswerAgeText   string
 	StallCount          int
+	InFlightCount       int
 	HolderPid           int
 	HolderStartedAtText string
 	IsRunning           bool
@@ -51,6 +52,12 @@ func BuildJobStatusReport(projectFolderPath string, jobName string,
 		report.EtaText = "--"
 	}
 	report.LastAnswerAgeText = jobStore.LastAnswerAgeText()
+	// The calls in flight live in the memory of the running process, so the
+	// runner writes them to a live file and this reader picks them up. A
+	// finished run removes the file, so a stale count is never shown.
+	if liveStatusRecord, liveStatusFound := jobStore.ReadLiveStatus(); liveStatusFound {
+		report.InFlightCount = liveStatusRecord.InFlightCount
+	}
 	return report
 }
 
@@ -61,10 +68,11 @@ func (report JobStatusReport) StatusLineOf() string {
 		percentValue = 100.0 * float64(report.DoneCount) / float64(report.TotalCount)
 	}
 	return fmt.Sprintf(
-		"[%s] %d/%d  %5.1f%%  ok=%d fail=%d pending=%d  rate=%.2f/s  eta=%s  last=%s  stalls=%d",
+		"[%s] %d/%d  %5.1f%%  ok=%d fail=%d pending=%d  rate=%.2f/s  eta=%s  inflight=%d  last=%s  stalls=%d",
 		time.Now().Format("15:04:05"), report.DoneCount, report.TotalCount, percentValue,
 		report.DoneCount, report.FailedCount, report.PendingCount,
-		report.RatePerSecond, report.EtaText, report.LastAnswerAgeText, report.StallCount)
+		report.RatePerSecond, report.EtaText, report.InFlightCount,
+		report.LastAnswerAgeText, report.StallCount)
 }
 
 // HolderLineOf writes who runs the job, or that nobody does.

@@ -106,8 +106,14 @@ func runUnit(projectFolderPath string, jobStore *store.JobStore, jobUnit store.J
 			// empty answer is only a symptom of it.
 			reasonText := answerError
 			if callResult.IsStall() {
-				reasonText = fmt.Sprintf("stall: no output for %.0fs after %d chars",
-					callResult.StallSeconds, callResult.CharCount)
+				// The call names the stall it saw, so a trickle is not
+				// reported as a hang. The fallback covers a stall that
+				// arrived with no reason text.
+				reasonText = strings.TrimSpace(callResult.StderrText)
+				if reasonText == "" {
+					reasonText = fmt.Sprintf("stall: no output for %.0fs after %d chars",
+						callResult.StallSeconds, callResult.CharCount)
+				}
 			} else if callResult.ExitCode != 0 {
 				stderrText := pattern.CutRuneText(
 					strings.TrimSpace(callResult.StderrText), 1000)
@@ -157,6 +163,9 @@ func Run(projectFolderPath string, settings store.JobSettings, unitList []store.
 			return 3
 		}
 		defer runLock.Release()
+		// The live file is removed on exit, so `--status` never shows the
+		// calls in flight of a run that has already stopped.
+		defer jobStore.RemoveLiveStatus()
 	}
 	logFolderPath := filepath.Join(projectFolderPath, "logs")
 	if createError := os.MkdirAll(logFolderPath, 0o755); createError != nil {
@@ -223,14 +232,23 @@ func Run(projectFolderPath string, settings store.JobSettings, unitList []store.
 		}
 		tickerHandle := time.NewTicker(pollDuration)
 		defer tickerHandle.Stop()
+		// The live file is written on a short tick, so `--status` can name
+		// the calls in flight. The progress line is written on the poll
+		// interval, because a reader tails it and a line every second would
+		// bury the history.
+		liveTickerHandle := time.NewTicker(LiveStatusSeconds * time.Second)
+		defer liveTickerHandle.Stop()
 		for {
-			line := ProgressLineOf(jobStore, unitList, counters)
-			fmt.Println(line)
-			progressFileHandle.WriteString(line + "\n")
 			select {
 			case <-stopChannel:
 				return
+			case <-liveTickerHandle.C:
+				writeLiveStatusOf(jobStore, counters)
 			case <-tickerHandle.C:
+				line := ProgressLineOf(jobStore, unitList, counters)
+				fmt.Println(line)
+				progressFileHandle.WriteString(line + "\n")
+				writeLiveStatusOf(jobStore, counters)
 			}
 		}
 	}()
@@ -314,7 +332,11 @@ func runProbe(projectFolderPath string, jobStore *store.JobStore,
 	fmt.Printf("exit=%d  seconds=%.1f  chars=%d  chars/s=%.1f\n",
 		callResult.ExitCode, callResult.SecondCount, callResult.CharCount, charPerSecond)
 	if callResult.IsStall() {
-		fmt.Printf("stall: no output for %.0fs\n", callResult.StallSeconds)
+		stallText := strings.TrimSpace(callResult.StderrText)
+		if stallText == "" {
+			stallText = fmt.Sprintf("stall: no output for %.0fs", callResult.StallSeconds)
+		}
+		fmt.Printf("%s\n", stallText)
 	}
 	if callResult.ExitCode != 0 {
 		fmt.Fprintf(os.Stderr, "stderr: %s\n",

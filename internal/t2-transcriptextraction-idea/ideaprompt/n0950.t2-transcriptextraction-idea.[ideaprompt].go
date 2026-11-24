@@ -53,32 +53,43 @@ const IdeaPromptCharBudget = 60000
 var IdeaPromptHeaderLineList = []string{
 	"You read a Telegram chat between 2 speakers: `Synth` and `Vlad [russia][ml]`.",
 	"The chat is about LLM training, sparsity, pruning, and model architecture.",
-	"The messages below are one window of the chat, in time order.",
 	"",
-	"Extract the named things this window carries, for a searchable index.",
-	"Name every paper, talk, video, repository, dataset, method, and model.",
-	"An entry that names no message id cannot be checked, so every entry ends",
-	"with the message id it came from.",
+	"Below is the summary of one window of 10 messages, then the messages",
+	"themselves. The summary already names the papers, talks, repositories,",
+	"methods, and models of the window. Your job is to turn those names into",
+	"index entries, and to give each entry the message id it came from.",
+	"",
+	"Take every named thing from the summary. Add a thing the summary missed",
+	"only when a message names it plainly. An entry that names no message id",
+	"cannot be checked against the chat, so read the messages to find the id",
+	"of each entry. An entry whose message you cannot find keeps `unknown` as",
+	"its message id, so a reader sees that the id is missing rather than",
+	"wrong.",
 	"",
 	IdeaAnswerFormat,
 	"",
-	"----- MESSAGES -----",
+	"----- SUMMARY -----",
 }
 
 // IdeaPromptTextOf returns the prompt text of one window.
 //
-// A Cyrillic message is read through its English text, so the model reads one
-// language. A message with no translation keeps its own text.
+// The prompt holds the 10-message summary first, because the summary is the
+// text this stage extracts from: it already names the things the window
+// carries, in one place. The messages follow, so the model can find the
+// message id of each entry. A Cyrillic message is read through its English
+// text, so the model reads one language.
 func IdeaPromptTextOf(windowRow map[string]string, messageRowList []map[string]string,
-	englishTextByMessage map[string]string) string {
+	englishTextByMessage map[string]string, summaryRow map[string]string) string {
 	headerLineList := make([]string, 0, len(IdeaPromptHeaderLineList)+6)
-	headerLineList = append(headerLineList, IdeaPromptHeaderLineList[0:4]...)
+	headerLineList = append(headerLineList, IdeaPromptHeaderLineList[0:3]...)
 	headerLineList = append(headerLineList,
 		fmt.Sprintf("Window: %s", windowRow["window_id"]),
 		fmt.Sprintf("Messages: %d, from %s to %s", len(messageRowList),
 			windowRow["first_message_key"], windowRow["last_message_key"]),
 		"")
-	headerLineList = append(headerLineList, IdeaPromptHeaderLineList[4:]...)
+	headerLineList = append(headerLineList, IdeaPromptHeaderLineList[3:]...)
+	headerLineList = append(headerLineList, renderSummaryBlock(summaryRow))
+	headerLineList = append(headerLineList, "", "----- MESSAGES -----")
 
 	usedCharCount := 0
 	for _, headerLine := range headerLineList {
@@ -97,6 +108,22 @@ func IdeaPromptTextOf(windowRow map[string]string, messageRowList []map[string]s
 		usedCharCount += len([]rune(blockText)) + 2
 	}
 	return strings.Join(append(headerLineList, bodyLineList...), "\n")
+}
+
+// renderSummaryBlock returns the summary of one window, one field per line.
+//
+// The summary is written as the 14 field lines the summary stage asked for,
+// so the model reads the same shape it is asked to answer in.
+func renderSummaryBlock(summaryRow map[string]string) string {
+	lineList := make([]string, 0, len(SummaryFieldColumnList))
+	for _, fieldColumn := range SummaryFieldColumnList {
+		fieldValueText := strings.TrimSpace(summaryRow[fieldColumn.ColumnName])
+		if fieldValueText == "" {
+			fieldValueText = "none"
+		}
+		lineList = append(lineList, fmt.Sprintf("%s: %s", fieldColumn.FieldName, fieldValueText))
+	}
+	return strings.Join(lineList, "\n")
 }
 
 // renderMessageBlock returns the prompt block of one message.
@@ -156,6 +183,17 @@ func Run(projectFolderPath string) error {
 	if translationError != nil {
 		return translationError
 	}
+	// The summary of each window is the text this stage extracts from, so a
+	// window with no summary has nothing to extract and is skipped.
+	summaryTable, summaryError := table.ReadTable(
+		filepath.Join(dataFolderPath, "summaries.csv"))
+	if summaryError != nil {
+		return summaryError
+	}
+	summaryRowByWindowId := make(map[string]map[string]string, len(summaryTable.DataRows))
+	for _, summaryRow := range summaryTable.DataRows {
+		summaryRowByWindowId[summaryRow["window_id"]] = summaryRow
+	}
 
 	ideaWindowTable := table.NewTable(IdeaWindowTableColumnNames)
 	for _, windowRow := range windowTable.DataRows {
@@ -166,7 +204,11 @@ func Run(projectFolderPath string) error {
 		if len(messageRowList) == 0 {
 			continue
 		}
-		promptText := IdeaPromptTextOf(windowRow, messageRowList, englishTextByMessage)
+		summaryRow, summaryFound := summaryRowByWindowId[windowRow["window_id"]]
+		if !summaryFound {
+			continue
+		}
+		promptText := IdeaPromptTextOf(windowRow, messageRowList, englishTextByMessage, summaryRow)
 		promptRelativePath := IdeaPromptFilePathOf(windowRow["window_id"])
 		promptPath := filepath.Join(projectFolderPath, promptRelativePath)
 		if writeError := os.WriteFile(promptPath, []byte(promptText), 0o644); writeError != nil {

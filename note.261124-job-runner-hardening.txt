@@ -1,0 +1,84 @@
+# The job runner hardening: what each requirement changed and how it was checked
+
+Date: 2026-11-24
+
+## Req 8: the merge shrank the layers, the hardening grew the files
+
+The objective asked for 6 groups to become fewer. They became 5:
+`store`, `call`, `answer`, `run`, `lock`.
+
+The merge itself removed 3 files and 127 lines:
+
+```
+internal/t3-transcriptextraction-job/progress/n1040  -104 lines
+internal/t3-transcriptextraction-job/unit/n1000        -8 lines
+internal/t3-transcriptextraction-job/unit/n1001       -15 lines
+```
+
+`unit/n1000` became `store/n1000` with 2 lines changed, so it is a rename and
+not a rewrite.
+
+The file count rose from 7 to 12 and the line count from 828 to 1680, and
+that rise is the 5 new features, not the merge. The features the objective
+asks for are a lock, stall detection, a live status file, settings
+validation, and a per-job timeout table, and each one is new code:
+
+| new file | lines | what it adds |
+| --- | --- | --- |
+| `lock/n1060` | 145 | the single-instance lock |
+| `call/n1021` | 67 | the stall watch buffer |
+| `call/n1022` | 60 | the trickle rule and its 2 constants |
+| `store/n1012` | 143 | the rate, the last-answer age, the stall count |
+| `store/n1013` | 96 | the live status file |
+| `run/n1041` | 101 | the `--status` report |
+
+So the 2 goals pull against each other: the objective asks for fewer groups
+and for 6 new behaviours. The group count fell as asked, and the file count
+rose because the behaviours are new. A merge that also added 6 behaviours
+cannot shrink the line count.
+
+## Req 4: the 2 kill rules
+
+A call is killed for a stall in 2 ways, and the failure file says which:
+
+| rule | fires when | reason text |
+| --- | --- | --- |
+| no growth | stdout has not grown for `--stall` seconds | `stall: no output for 3s, process killed` |
+| trickle | the call has run 30s and writes under 10 chars/s | `stall: trickled 0.50 chars/s for 30s, under the 10 chars/s floor, process killed` |
+
+The trickle rule measures the rate from the start of the call, not from the
+last growth. A provider that writes 1 character every 2 seconds keeps the
+growth clock moving, so the no-growth rule never fires on it and the call
+would hold its worker until the timeout and be recorded as a timeout.
+
+Both rules have a Go test in `call/n9900.call.call._test.go`. The trickle test
+kills at 30.0s and the no-growth test at 3.0s.
+
+## Req 6: the calls in flight
+
+The in-flight count lives in the memory of the running process, and `--status`
+is a second process that reads files only. The runner therefore writes
+`model-answer/job/<job>/live.status` every 2 seconds, and `--status` reads it.
+A finished run removes the file, so a stale count is never shown.
+
+Measured: a run with `--jobs 2` answers `inflight=2`, and a finished run
+answers `inflight=0`.
+
+## Req 1: the lock file is never empty
+
+The first version created the lock file and then wrote the pid into it. A
+second process that read the file in that window saw no pid and reclaimed a
+live lock. The record is now written to a temporary file and linked into
+place, so the lock file never exists empty. `os.Link` fails with `EEXIST` when
+the lock exists, so 1 process still takes the lock.
+
+`TestLockFileIsNeverEmpty` runs 200 acquire/release rounds while a reader
+polls the file, and the file is never seen empty.
+
+## The evidence files
+
+`evidence.261124-job-runner/errors-log-sample.txt` holds a real
+`logs/relevance-window-vote.errors.log` written by a forced stall, and
+`evidence.261124-job-runner/stall-failure-sample.json` holds the matching
+failure file. Both were produced by a fake `pi` that sleeps 300s with
+`--stall 3`, so the artifacts outlive the run that made them.

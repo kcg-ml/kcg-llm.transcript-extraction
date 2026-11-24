@@ -75,15 +75,56 @@ func AcquireJobRunLock(jobFolderPath string) (*JobRunLock, error) {
 }
 
 // createLockFile writes the lock file and fails when another process holds it.
+//
+// The record is written to a temporary file first and then linked into place,
+// because a lock file that exists with no record inside it is read as stale
+// by a second process and reclaimed. `link` fails with EEXIST when the lock
+// file already exists, so the lock is still taken by 1 process only, and the
+// lock file never exists empty.
 func (runLock *JobRunLock) createLockFile() error {
+	recordText := fmt.Sprintf("pid=%d\nstarted_at=%s\n",
+		runLock.HolderPid, time.Now().Format("2006-01-02T15:04:05"))
+	recordFolderPath := filepath.Dir(runLock.LockFilePath)
+	temporaryFileHandle, createError := os.CreateTemp(recordFolderPath, "run.lock.*.tmp")
+	if createError != nil {
+		return createError
+	}
+	temporaryFilePath := temporaryFileHandle.Name()
+	defer os.Remove(temporaryFilePath)
+	if _, writeError := temporaryFileHandle.WriteString(recordText); writeError != nil {
+		temporaryFileHandle.Close()
+		return writeError
+	}
+	if closeError := temporaryFileHandle.Close(); closeError != nil {
+		return closeError
+	}
+	if chmodError := os.Chmod(temporaryFilePath, 0o644); chmodError != nil {
+		return chmodError
+	}
+	linkError := os.Link(temporaryFilePath, runLock.LockFilePath)
+	if linkError != nil {
+		if os.IsExist(linkError) {
+			return linkError
+		}
+		// A file system with no hard links answers with something else, so
+		// fall back to the exclusive create and write the record at once.
+		return runLock.createLockFileDirectly(recordText)
+	}
+	return nil
+}
+
+// createLockFileDirectly creates the lock file and writes the record in it.
+//
+// This is the fallback for a file system with no hard links. It leaves the
+// narrow window the linked create avoids, so it is used only when `link`
+// fails for a reason other than an existing lock file.
+func (runLock *JobRunLock) createLockFileDirectly(recordText string) error {
 	fileHandle, openError := os.OpenFile(runLock.LockFilePath,
 		os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if openError != nil {
 		return openError
 	}
 	defer fileHandle.Close()
-	recordText := fmt.Sprintf("pid=%d\nstarted_at=%s\n",
-		runLock.HolderPid, time.Now().Format("2006-01-02T15:04:05"))
 	_, writeError := fileHandle.WriteString(recordText)
 	return writeError
 }

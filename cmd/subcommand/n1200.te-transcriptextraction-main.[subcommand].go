@@ -178,8 +178,9 @@ func AddJobFlags(flagSet *flag.FlagSet, settings *store.JobSettings) {
 	flagSet.IntVar(&settings.RetryCount, "retries", 2, "retries of one unit")
 	flagSet.IntVar(&settings.RetrySleepSeconds, "retry-sleep", 5,
 		"seconds between retries")
-	flagSet.IntVar(&settings.StallSeconds, "stall", 90,
-		"seconds a call may go without growing its output before it is killed")
+	flagSet.IntVar(&settings.StallSeconds, "stall", 0,
+		"seconds a call may go without growing its output before it is killed; "+
+			"0 uses the bound measured for the job")
 	flagSet.BoolVar(&settings.ProbeOnly, "probe", false,
 		"make one call on the first pending unit and print its rate, saving no answer")
 	flagSet.IntVar(&settings.UnitLimit, "limit", 0,
@@ -211,6 +212,9 @@ func RunJob(projectFolderPath string, argumentList []string) error {
 	settings.JobName = *jobName
 	if settings.TimeoutSeconds == 0 {
 		settings.TimeoutSeconds = chainunit.TimeoutSecondsOf(*jobName)
+	}
+	if settings.StallSeconds == 0 {
+		settings.StallSeconds = chainunit.StallSecondsOf(*jobName)
 	}
 	exitCode := run.Run(projectFolderPath, settings, unitList)
 	if exitCode != 0 {

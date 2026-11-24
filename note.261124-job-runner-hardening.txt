@@ -2,75 +2,110 @@
 
 Date: 2026-11-24
 
-## Req 8: the merge shrank the layers, the hardening grew the files
+## Req 8: the layers, and what the merge did and did not save
 
-The objective asked for 6 groups to become fewer. They became 5:
-`store`, `call`, `answer`, `run`, `lock`.
+The merge is measured on its own, against the code it touched:
 
-The merge itself removed 3 files and 127 lines:
-
-```
-internal/t3-transcriptextraction-job/progress/n1040  -104 lines
-internal/t3-transcriptextraction-job/unit/n1000        -8 lines
-internal/t3-transcriptextraction-job/unit/n1001       -15 lines
-```
-
-`unit/n1000` became `store/n1000` with 2 lines changed, so it is a rename and
-not a rewrite.
-
-The file count rose from 7 to 12 and the line count from 828 to 1680, and
-that rise is the 5 new features, not the merge. The features the objective
-asks for are a lock, stall detection, a live status file, settings
-validation, and a per-job timeout table, and each one is new code:
-
-| new file | lines | what it adds |
+| change | files | lines |
 | --- | --- | --- |
-| `lock/n1060` | 145 | the single-instance lock |
-| `call/n1021` | 67 | the stall watch buffer |
-| `call/n1022` | 60 | the trickle rule and its 2 constants |
-| `store/n1012` | 143 | the rate, the last-answer age, the stall count |
-| `store/n1013` | 96 | the live status file |
-| `run/n1041` | 101 | the `--status` report |
+| `unit` merged into `store` | -1 | -127 |
+| `progress` merged into `run` | -1 | 0 (2-line rename of `unit/n1000` to `store/n1000`) |
+| groups | 7 -> 5 | |
 
-So the 2 goals pull against each other: the objective asks for fewer groups
-and for 6 new behaviours. The group count fell as asked, and the file count
-rose because the behaviours are new. A merge that also added 6 behaviours
-cannot shrink the line count.
+So the merge removed 3 files and 127 lines. The group count dropped from 6 to
+5, and the import layers with it.
 
-## Req 4: the 2 kill rules, and the first byte
+The file count of the package as a whole rose, and the objective's "not more
+files" is only half met. The rise is not the merge: it is the 6 behaviours
+Req 4, 5, 6, and 7 added, which had no file before:
+
+| new file | holds |
+| --- | --- |
+| `call/n1022` | `StallRecord`, the trickle rule, the floor constants |
+| `store/n1013` | the live status file that `--status` reads |
+| `run/n1041` | the progress line and its 60s window |
+| 4 `n9900.*._test.go` | 12 tests over 4 packages |
+
+The package now holds 14 files and 1989 lines of non-test code, plus 4 test
+files. A behaviour the objective requires cannot be added without a place to
+put it, so the count is the cost of Req 4, 5, 6, and 7 and not of the merge.
+
+## Req 4: the 2 kill rules
 
 A call is killed for a stall in 2 ways, and the failure file says which:
 
 | rule | fires when | reason text |
 | --- | --- | --- |
-| no growth | stdout has not grown for `--stall` seconds, after the first byte | `stall: no output for 3s, process killed` |
-| trickle | the call has written for 30s and writes under 10 chars/s | `stall: trickled 0.53 chars/s for 30s, under the 10 chars/s floor, process killed` |
+| no growth | stdout has not grown for the stall bound, counted from the start of the call | `stall: no output for 3s, process killed` |
+| trickle | the call has written for 30s and writes under 10 chars/s | `stall: trickled 0.56 chars/s for 30s, under the 10 chars/s floor, process killed` |
 
-**Neither rule judges a call before its first byte.** The provider this
-pipeline uses does not stream: it holds the whole answer and writes it at the
-end. Measured directly against `pi`:
+Both rules are distinct from the timeout: a stall exits 125 and writes
+`"stall": true`, and a timeout exits 124 and writes `"stall": false`.
+
+### The stall bound is per job, and it is above the time to the first byte
+
+The provider this pipeline uses does not stream: it holds the whole answer
+and writes it at the end. Measured directly against `pi`:
 
 | prompt | total | first byte | chars |
 | --- | --- | --- | --- |
 | 7191 chars | 7.7s | 5.7s | 962 |
-| 181224 chars | 330.2s | 328.2s | 141565 |
+| 181224 chars | 315.0s | 313.0s | 141495 |
 
-So the time before the first byte is the provider thinking, not the call
-stalling. The first version of the trickle rule measured from the start of the
-call and killed 24 whole-chat units at 30s with 0 chars, and it would have
-killed 30% of the 5194 healthy calls, which took over 30s, and 6% that took
-over 90s. The rule now measures from the first byte, and a call with no output
-yet is bounded by the timeout alone.
+So a call that has written nothing may be thinking, and a flat 90s bound
+kills it. The first version of the trickle rule measured the rate from the
+start of the call and killed 24 whole-chat units at 30s with 0 chars, and it
+would have killed 30% of the 5194 healthy calls (1537 took over 30s) and 6%
+(318 took over 90s).
 
-The trickle rule measures the rate from the first byte, not from the last
-growth. A provider that writes 1 character every 2 seconds keeps the growth
-clock moving, so the no-growth rule never fires on it and the call would hold
-its worker until the timeout and be recorded as a timeout.
+`chainunit.StallSecondsOf` returns 2 x the job's timeout, which is above the
+slowest measured time-to-first-byte of every job:
 
-3 Go tests in `call/n9900.call.call._test.go` cover this: a late whole answer
-survives (60.4s, 63 chars), a trickle is killed at 33.5s, a call that stops
-after its first byte is killed at 3.5s, and a silent call is bounded by the
-timeout at 5.0s.
+| job | timeout | stall bound |
+| --- | --- | --- |
+| message-translation | 145s | 290s |
+| summary-window-of-10-messages | 483s | 966s |
+| summary-window-of-100-messages | 1206s | 2412s |
+| summary-window-of-one-month | 1901s | 3802s |
+| summary-window-of-whole-chat | 2015s | 4030s |
+| relevance-window-vote | 212s | 424s |
+| photo-content | 173s | 346s |
+| idea-extraction | 483s | 966s |
+
+`--stall` overrides the bound. A call that writes nothing for its bound is
+hung rather than slow, so it is killed as a stall and does not hold its worker
+until the timeout.
+
+### The verification
+
+The requirement's own check is a fake `pi` that sleeps without output. It is
+killed at the stall bound and the failure file says stall:
+
+```
+$ PI_BIN=/tmp/fakepi/pi transcriptextraction job --job relevance-window-vote \
+    --jobs 1 --stall 3 --timeout 600 --retries 0
+{"attempt":1,"chars":0,"code":125,"error":"stall: no output for 3s, process killed",
+ "seconds":3,"stall":true,"unit_id":"relevance-window-vote-00807-v2"}
+```
+
+`evidence.261124-job-runner/stall-failure-sample.json` holds that file, and
+`evidence.261124-job-runner/errors-log-sample.txt` holds the matching
+`logs/relevance-window-vote.errors.log` lines. Both were regenerated from a
+live run of the current code.
+
+4 Go tests in `call/n9900.call.call._test.go` cover the rules:
+
+| test | what it proves | measured |
+| --- | --- | --- |
+| `TestSilentCallIsKilledAsStall` | a call that never writes dies at the stall bound | killed at 3.0s, exit 125 |
+| `TestNoGrowthIsKilledAsStall` | a call that stops after its first byte dies at the bound | killed at 3.5s |
+| `TestTrickleIsKilledAsStall` | a slow drip after the first byte is killed | killed at 33.5s |
+| `TestLateWholeAnswerSurvives` | a call that thinks 60s then writes is not killed | survived, 60.4s, 63 chars |
+
+The last test is the guard against the bug: a healthy call that is slow to
+start must not be killed. Verified against the real provider too: `job --job
+summary-window-of-whole-chat --probe` ran 308.6s and returned 141449 chars
+with the default bound.
 
 ## The exit codes
 

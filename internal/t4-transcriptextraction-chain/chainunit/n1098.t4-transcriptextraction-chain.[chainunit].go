@@ -71,3 +71,21 @@ func TimeoutSecondsOf(jobName string) int {
 	}
 	return 0
 }
+// StallSecondsOf returns the stall bound of one job.
+//
+// The provider this pipeline uses does not stream: it holds the whole answer
+// and writes it at the end. A measured 181224-char prompt answered in 315.0s
+// with its first byte at 313.0s, so a call that has written nothing for 90s
+// may still be thinking and must not be killed.
+//
+// The bound is therefore 2 x the job's timeout, which is above the slowest
+// measured time-to-first-byte of every job, and a call that writes nothing
+// for that long is hung rather than slow. A job with no measured calls takes
+// the same rule from its borrowed timeout.
+func StallSecondsOf(jobName string) int {
+	timeoutSeconds := TimeoutSecondsOf(jobName)
+	if timeoutSeconds <= 0 {
+		return 0
+	}
+	return 2 * timeoutSeconds
+}

@@ -111,16 +111,18 @@ func CallPi(projectFolderPath string, promptText string, settings store.JobSetti
 			case <-watcherStopChannel:
 				return
 			case <-tickerHandle.C:
-				// The provider this pipeline uses does not stream: it holds
-				// the whole answer and writes it at the end, so the time
-				// before the first byte is the provider thinking and not the
-				// call stalling. A measured 181224-char prompt answered in
-				// 330s with its first byte at 328s. Neither rule may judge
-				// the call before that byte arrives, or a healthy call is
-				// killed for being slow to start.
-				if !stdoutWatch.HasFirstByte() {
-					continue
-				}
+				// The no-growth rule runs from the start of the call, so a
+				// call that never writes is killed at the stall bound and
+				// recorded as a stall, not left to hold its worker until the
+				// timeout.
+				//
+				// The provider does not stream: it holds the whole answer
+				// and writes it at the end, and a measured 181224-char
+				// prompt answered in 315.0s with its first byte at 313.0s.
+				// So the stall bound is set above the slowest measured
+				// time-to-first-byte by `chainunit.StallSecondsOf`, and a
+				// call that writes nothing for that long is hung rather
+				// than slow.
 				stoodStillSeconds := stdoutWatch.SecondsSinceGrowth()
 				if stoodStillSeconds >= stallSeconds {
 					stallChannel <- StallRecord{KindText: StallKindNoGrowth,

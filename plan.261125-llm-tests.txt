@@ -1,0 +1,198 @@
+plan.261125-llm-tests.txt — the LLM tests of the transcript-extraction pipeline
+================================================================================
+
+WHAT THIS FILE IS
+
+A plan, not code. It names every stage of the pipeline, what one test of that
+stage would assert, whether the test replays a saved answer or calls the model,
+and what the test costs. No test code is written by this plan.
+
+The repository holds 14 tests in 5 files, and none of them calls a model:
+
+  internal/t3-transcriptextraction-job/call/n9900.call.call._test.go
+  internal/t3-transcriptextraction-job/lock/n9900.lock.lock._test.go
+  internal/t3-transcriptextraction-job/run/n9900.run.run._test.go
+  internal/t3-transcriptextraction-job/store/n9900.store.store._test.go
+  internal/t4-transcriptextraction-chain/chainunit/n9900.chainunit.chainunit._test.go
+
+Those 14 tests cover the runner: the lock, the stall rules, the error log, the
+flag parsing, and the per-job bounds. They prove the runner does not hang. They
+prove nothing about whether a model answer parses into the right fields, which
+is the question this plan answers.
+
+WHY A REPLAY TEST IS THE DEFAULT
+
+Every model call is already saved. `model-answer/job/<job>/done/<unit_id>.txt`
+holds the answer of one unit, and `model-answer/job/<job>/state.jsonl` holds one
+line per attempt with the seconds, the character count, and the model name.
+That means a test can feed a saved answer to the parser and assert the parse,
+with no model call, no network, and no cost. A replay test is deterministic, so
+it fails only when the parser changes.
+
+A real-model test is needed only where the question is about the model itself:
+does this prompt still produce an answer of the shape the parser expects. Those
+tests are slow and cost money, so this plan keeps them to 1 per prompt shape.
+
+THE 2 KINDS OF TEST
+
+  replay  feeds a saved file from `model-answer/job/<job>/done/` to the parser
+          and asserts the table row. Cost: 0 calls, under 1 second.
+  live    calls the model once with a real prompt and asserts the answer parses.
+          Cost: 1 call, the measured seconds of that job, real money.
+
+MEASURED CALL COST
+
+From `model-answer/job/<job>/state.jsonl`, the `seconds` and `chars` of every
+successful answer. `p50` is the median, `max` is the slowest call.
+
+  job                              n     p50      max    chars p50   chars max
+  message-translation            284    7.3s    46.9s          302        3706
+  photo-content                  797   20.3s    84.0s          932        6357
+  relevance-window-vote         3066   14.6s   200.7s          483         931
+  summary-window-of-10-messages 1042   48.7s   209.3s         1894        9487
+  summary-window-of-100-messages 105  191.8s   380.1s         7930       16534
+  summary-window-of-one-month     13  329.8s   475.3s        13425       20562
+  summary-window-of-whole-chat   116  199.7s   547.6s        18215       77179
+  idea-extraction               1042    9.0s    74.2s          490        8048
+
+A live test costs the `p50` of its job, because the median call is the typical
+one. A live test of all 8 jobs costs 7.3 + 20.3 + 14.6 + 48.7 + 191.8 + 329.8 +
+199.7 + 9.0 = 821 seconds, about 14 minutes, for 8 calls.
+
+STAGE 1 — THE RULE STAGES
+
+These stages call no model, so every test of them is a replay test with no
+saved answer at all: the input is a hand-written CSV and the output is checked.
+
+  1.1  `extract` reads `extract.telegram-log.vlad/result.json` and writes
+       `data/messages.csv`.
+       Test: feed a 3-message fixture and assert `message_key` is
+       `<id:06d>-<yymmdd>`, that a `photo` placeholder message keeps its row,
+       and that the 6 side tables hold one row per message.
+       Kind: replay, 0 calls.
+
+  1.2  `split` writes the 3 modes.
+       Test: assert all 3 modes cover the same word count, that `unbroken`
+       splits only a message over 100 words, and that `paragraph` keeps a code
+       fence whole.
+       Kind: replay, 0 calls.
+
+  1.3  `references` writes `data/references.csv`.
+       Test: assert a message holding 2 URLs yields 2 rows and a message
+       holding none yields none.
+       Kind: replay, 0 calls.
+
+  1.4  `relevance-solo` decides a long message by rule.
+       Test: assert a message with 3 ML terms is voted relevant and a message
+       with none is voted not relevant.
+       Kind: replay, 0 calls.
+
+  1.5  `relevance-consensus` turns 3 votes into 1 verdict.
+       Test: assert 2 of 3 relevant votes yield relevant, 1 of 3 yields not
+       relevant, and a tie follows the stated rule.
+       Kind: replay, 0 calls.
+
+STAGE 2 — THE PARSERS OF MODEL ANSWERS
+
+Every one of these reads a saved answer and asserts the table row. Each is the
+test that would have caught a real defect this session: the idea parser
+returned an empty `message_key` for 637 rows, and a replay test on one such
+answer would have failed at once.
+
+  2.1  `translate` — `data/translations.csv`.
+       Test: feed a saved Cyrillic answer and assert `text_en` holds no
+       Cyrillic, and that an answer repeating the source is rejected.
+       Kind: replay, 0 calls. Saved answers: 284.
+
+  2.2  `photo-index` — `data/photo_index.csv`.
+       Test: feed a saved photo answer and assert all 6 fields parse, and that
+       a photo answer with no `SHOWS` line is rejected.
+       Kind: replay, 0 calls. Saved answers: 797.
+
+  2.3  `aggregate` — `data/summaries.csv`, `data/summary_items.csv`.
+       Test: feed a saved 10-message answer and assert all 14 fields land in
+       their columns, and that a missing field yields an empty column rather
+       than a shifted row.
+       Kind: replay, 0 calls. Saved answers: 1042 + 105 + 13 + 116.
+
+  2.4  `idea-index` — `data/idea_items.csv`.
+       Test: feed a saved idea answer and assert the 5 fields parse, and that
+       every `message_key` resolves in `data/messages.csv`. This is the test
+       for the 637-row defect.
+       Kind: replay, 0 calls. Saved answers: 1042.
+
+  2.5  `idea-paper` — `data/papers.csv`.
+       Test: assert an entry leading with `2501.16396` yields that
+       `arxiv_id` and an empty `title`, an entry leading with a title yields
+       the title and no id, and 2 mentions of one id merge to 1 row.
+       Kind: replay, 0 calls. Input rows: 385.
+
+  2.6  `idea-concept` — `data/concepts.csv`.
+       Test: assert `Modded-NanoGPT` and `modded-nanogpt` merge to 1 concept,
+       that `hit_count` equals the number of input rows for that concept, and
+       that `message_keys` never exceeds 20.
+       Kind: replay, 0 calls. Input rows: 4864.
+
+STAGE 3 — THE PROMPT BUILDERS
+
+These call no model either, but they are where a live test earns its cost: a
+prompt that changes shape changes the answer.
+
+  3.1  `windows`, `relevance-windows`, `photos`, `idea-windows`.
+       Test: assert one prompt file per unit, that the prompt names the
+       `message_key` of every message it carries, and that the prompt stays
+       under the character budget of its job.
+       Kind: replay, 0 calls.
+
+  3.2  The 1 live test per prompt shape.
+       Test: build the prompt for 1 unit, call the model once, assert the
+       answer parses into the fields the parser expects.
+       Kind: live, 1 call per job. Cost: the `p50` of the job.
+       Run this only when a prompt builder changes, not on every commit.
+
+STAGE 4 — THE RUNNER
+
+Already covered by the 14 existing tests. This plan adds nothing here. The 4
+gaps the existing tests leave, and what a new test would assert:
+
+  4.1  `--stall 90` passed explicitly is overridden by the job's own bound.
+       Test: assert the effective bound equals `chainunit.StallSecondsOf` when
+       the flag is at its default, and that a larger flag value is refused or
+       honoured. Kind: replay, 0 calls.
+
+  4.2  A failed unit counts in both `fail` and `pending`.
+       Test: assert the 3 counters `ok + fail + pending` equal the unit count
+       for a store holding 1 failure. Kind: replay, 0 calls.
+
+  4.3  A done file with no `state.jsonl` line is not counted.
+       Test: assert a done file alone raises `ok`. Kind: replay, 0 calls.
+
+  4.4  The ETA prints `--` once the 60-second window empties.
+       Test: assert the ETA is a number while a call is in flight and `--`
+       when none is. Kind: replay, 0 calls.
+
+WHAT THIS PLAN DOES NOT TEST
+
+- The quality of an answer. A replay test proves the parse, not that the model
+  named the right paper. Judging quality needs a reader.
+- The provider's output limit. The whole-chat job fails 3 of 119 units because
+  the answer exceeds the model's output token limit at about 141000 characters.
+  No test can fix that; it is a property of the model, recorded in
+  `261126.errors.txt`.
+- A live test of `summary-window-of-whole-chat`. Its `p50` is 199.7s and its
+  largest prompt already truncates, so a live test of it costs 3 minutes and
+  may fail for a reason unrelated to the parser.
+
+THE ORDER TO BUILD THEM
+
+1. The 6 replay tests of stage 2, because each one guards a table that a reader
+   uses, and 2 of them would have caught a defect this session.
+2. The 5 replay tests of stage 1, because the rule stages are cheap and a
+   wrong split silently changes every later table.
+3. The 4 replay tests of stage 4, because they close the disclosed gaps.
+4. The live tests of stage 3 last, because they cost money and the replay tests
+   already prove the parse.
+
+The total cost of steps 1 to 3 is 0 model calls and under 5 seconds of test
+time. Step 4 costs 8 calls and about 14 minutes, and runs only when a prompt
+builder changes.

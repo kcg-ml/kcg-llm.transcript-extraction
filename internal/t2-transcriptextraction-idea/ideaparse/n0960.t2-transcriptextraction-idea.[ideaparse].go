@@ -30,7 +30,11 @@ var IdeaAnswerLinePattern = regexp.MustCompile(`^\s*\**([A-Z]+)\**\s*:\s*(.*)$`)
 // The key is `<telegram message id:06d>-<yymmdd>`, so it is 6 digits, a dash,
 // and 6 digits. An entry that ends with the key it came from is the shape the
 // prompt asks for.
-var IdeaMessageKeyPattern = regexp.MustCompile(`([0-9]{6}-[0-9]{6})`)
+//
+// The id must not follow a digit, or a 7-digit id the model invented such as
+// `1000017-260714` matches on its last 6 digits and yields the key
+// `000017-260714`, which names no message.
+var IdeaMessageKeyPattern = regexp.MustCompile(`(?:^|[^0-9])([0-9]{6}-[0-9]{6})(?:[^0-9]|$)`)
 
 // IdeaBareMessageIdPattern matches a Telegram message id with no date part.
 //
@@ -88,9 +92,9 @@ func IdeaItemTextListOf(fieldValueText string) []string {
 // A bare Telegram id is resolved against the window's messages, because the
 // model sometimes writes `593111` where the prompt asks for `593111-251120`.
 func MessageKeyOfItem(itemText string, messageKeyByMessageId map[string]string) string {
-	keyList := IdeaMessageKeyPattern.FindAllString(itemText, -1)
-	if len(keyList) > 0 {
-		return keyList[len(keyList)-1]
+	keyMatchList := IdeaMessageKeyPattern.FindAllStringSubmatch(itemText, -1)
+	if len(keyMatchList) > 0 {
+		return keyMatchList[len(keyMatchList)-1][1]
 	}
 	bareMatchList := IdeaBareMessageIdPattern.FindAllStringSubmatch(itemText, -1)
 	for matchIndex := len(bareMatchList) - 1; matchIndex >= 0; matchIndex-- {
@@ -99,6 +103,23 @@ func MessageKeyOfItem(itemText string, messageKeyByMessageId map[string]string) 
 		}
 	}
 	return ""
+}
+
+// MessageKeyOfItemInWindow returns the message key an entry names, and falls
+// back to the window's first message key when the entry names none.
+//
+// The model sometimes lists an item with no trailing id, or writes `unknown`
+// where the prompt asks for one, because the item came from the window's
+// summary and no single message states it. The item still came from that
+// window, so the window's first message key is the honest attribution and
+// every row keeps a key that resolves in `data/messages.csv`.
+func MessageKeyOfItemInWindow(itemText string, windowRow map[string]string,
+	messageKeyByMessageId map[string]string) string {
+	messageKey := MessageKeyOfItem(itemText, messageKeyByMessageId)
+	if messageKey != "" {
+		return messageKey
+	}
+	return windowRow["first_message_key"]
 }
 
 // ItemHeadTextOf returns the name part of one entry, which is the text before
@@ -171,7 +192,7 @@ func Run(projectFolderPath string) error {
 					"item_index":        fmt.Sprintf("%d", itemIndex),
 					"item":              itemText,
 					"item_head":         ItemHeadTextOf(itemText),
-					"message_key":       MessageKeyOfItem(itemText, messageKeyByMessageId),
+					"message_key":       MessageKeyOfItemInWindow(itemText, windowRow, messageKeyByMessageId),
 				})
 			}
 		}

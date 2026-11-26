@@ -5,13 +5,21 @@
 
 ## OPEN
 
-- none
+- BLOCKED 261126 01 M  3 whole-chat units exceed the model output limit   evidence: `summary-window-of-whole-chat` ends 116/119; the 3 failures are the 3 largest prompts (181224, 243049, 295405 chars) and all 3 stop at ~141000 answer chars with `Response was truncated: the model reached its output token limit`; the largest SUCCESSFUL prompt is 82945 chars, so the ceiling sits between 83k and 181k prompt chars. Needs a decision: split each oversized prompt into 2 sub-prompts, or accept 116/119. Recorded in `261126.errors.txt`.
 
 ## BLOCKED
 
 - none
 
 ## DONE
+
+- DONE 261126 05 S  the LLM-test plan written, no test code   evidence: `plan.261125-llm-tests.txt` 197 lines, 4 stages, the measured cost table of all 8 jobs, the replay-vs-live rule, and the build order; `find . -name '*_test.go' | wc -l` still 5
+- DONE 261126 04 M  `data/concepts.csv` built   evidence: 3659 rows; 0 rows without `message_keys`, 0 keys that fail to resolve in `data/messages.csv`; `hit_count` sums to 4864 = the input rows; top: claude 128, modded-nanogpt 63, nanogpt 61; `./build.sh` prints `29 csv files checked, 0 bad`
+- DONE 261126 03 M  `data/papers.csv` built   evidence: 350 rows, columns `paper_key,arxiv_id,doi,title,said,message_key,window_id`; 183 arXiv ids, 7 DOIs, 163 titles; `1706.03762`, `1512.03385`, `1412.6980` all present
+- DONE 261126 02 L  idea-extraction complete: 1042/1042, 0 fail   evidence: `job --job idea-extraction --status` prints `1042/1042 100.0% ok=1042 fail=0 pending=0 stalls=0`; `data/idea_windows.csv` 1042 rows, `data/idea_items.csv` 5435 rows
+- DONE 261126 02 S  the idea parser keeps every message key   evidence: 637 rows had an empty `message_key` (the model writes `unknown` or no id) and 419 more mis-parsed a 7-digit invented id as its last 6 digits; `MessageKeyOfItemInWindow` falls back to the window's `first_message_key` and `IdeaMessageKeyPattern` now requires a non-digit boundary; result 5435 rows, 0 unresolved
+- DONE 261126 01 M  relevance-window-vote complete: 3963/3963, 0 fail   evidence: `job --job relevance-window-vote --status` prints `3963/3963 100.0% ok=3963 fail=0 pending=0 stalls=0`; 204 new answers, 0 failed files
+- DONE 261126 00 M  summary-window-of-whole-chat run: 116/119   evidence: `logs/wc-run.log` last line `116/119 97.5% ok=87 fail=1`; 87 new answers; the 3 failures are the output-limit blocker above
 
 - DONE 261124 07 M  the stall bound fires before the timeout   evidence: `chainunit.StallSecondsOf` returns the larger of 90s and 15% above the slowest measured call (90/97/205/241/438/547/630/90s), every bound under its timeout; the `--stall` default is 90s; a silent fake `pi` on `summary-window-of-whole-chat` dies at the bound with exit 125 and `"stall": true`; `TestStallBoundIsUnderTheTimeout` and `TestStallBoundIsAboveTheSlowestMeasuredCall` pass; `AGENTS.md` now lists 8 job names and the idea chain rows
 - DONE 261124 06 M  a silent call dies at the stall bound   evidence: the `HasFirstByte` guard is gone, so the no-growth rule counts from the call start; `chainunit.StallSecondsOf` returns 2 x the job timeout (290/966/2412/3802/4030/424/346/966s), above the measured 313.0s time to the first byte; a fake `pi` that sleeps 300s is killed at 3.0s with exit 125 and `"stall": true`; `TestSilentCallIsKilledAsStall` passes; the artifacts are regenerated from a live run
@@ -21,7 +29,7 @@
 - DONE 261124 02 M  phase 1 of the idea extraction built and sampled   evidence: `internal/t2-transcriptextraction-idea/` (ideaprompt, ideaparse); job `idea-extraction`; the prompt reads the 10-message summary of the window first, then the messages, so each item gets its message id; `data/idea_windows.csv` 1042 rows; `data/idea_items.csv` 17 rows from 5 windows, every row carrying a message key that resolves to a real message in `data/messages.csv`; `./build.sh` prints `27 csv files checked, 0 bad` and `build ok`; `note.261124-idea-extraction-phase1.txt` records the measurements
 - DONE 261124 03 S  restructure to the lexicographic decomposition of ../pi.261122.nanogpt   evidence: `design.transcriptextraction-lexicographic-decomposition.txt` and `00-projects-and-groups.txt` written; 12 projects, 41 groups, 41 files, 0 import violations
 
-- DONE 261122 11 S  the 4 audit nits fixed   evidence: commit d8dbc35; `data/photos.csv` keeps an empty caption, `internal/csvtable` documents minimal quoting, `AGENTS.md` names `model-answer/job/<job>/state.jsonl` and real identifiers, `internal/messagetable/` removed
+- DONE 261122 11 S  the 4 audit nits fixed   evidence: commit d8dbc35; `data/photos.csv` keeps an empty caption, `internal/t0-transcriptextraction-table/table` documents minimal quoting, `AGENTS.md` names `model-answer/job/<job>/state.jsonl` and real identifiers, `internal/messagetable/` removed
 
 - DONE 261122 08 L  pipeline rewritten in Go, no Python left   evidence: `find . -name '*.py' -not -path './extract.*'` prints nothing; `go build ./...` and `go vet ./...` exit 0; `./build.sh` prints `24 csv files checked, 0 bad` and `build ok`
 - DONE 261122 09 M  Go rule stages reproduce the Python tables   evidence: parity run into `/tmp/parity` diffs 0 cells on messages, links, entities, mentions, replies, forwarded, media, parts_unbroken, parts_sentence, parts_paragraph, parts_manifest, relevance_windows; `references` adds 5 rows Go extracts and Python missed (4 `causal`, 1 `method muP`); `windows.ref_count` differs on 15 windows for the same 5 rows
@@ -51,13 +59,13 @@
   Trust the call, not the auth check. Run the job with
   `--provider zai.glm-5.3-flash-128k --model glm-5.3-flash`.
 - The `zai` content filter refuses 1 photo of the 797 with HTTP 400 `code 1301`
-  at full size and passes it at 200 px. `internal/durablejob` retries a photo
+  at full size and passes it at 200 px. `internal/t3-transcriptextraction-job/call` retries a photo
   once at 200 px through `sips` and writes the copy to `model-answer/shrunk-photo/`.
 - A photo prompt that does not name the answer language gets Chinese or Russian
-  field labels, and `internal/phototable` then parses no field. The prompt now
+  field labels, and `internal/t2-transcriptextraction-photo/index` then parses no field. The prompt now
   states `Write every value in English`. 21 of 797 answers had to be re-run.
 - The rollup prompts `prompts/summary-window-of-whole-chat-*.txt` reach the runner only through
-  `data/windows.csv`. `internal/summaryaggregation` appends them there, so run
+  `data/windows.csv`. `internal/t2-transcriptextraction-aggregate/rollup` appends them there, so run
   `transcriptextraction aggregate` before
   `transcriptextraction job --job summary-window-of-whole-chat`.
 - `transcriptextraction aggregate` rewrites `data/index.csv` and drops the photo
@@ -66,11 +74,11 @@
 
 - The model name `deepseek-v4.1-flash-1017` matches 9 authenticated providers.
   `pi` then prints `Error: Model ... is ambiguous` on stdout and exits 0, so a
-  runner that trusts the exit code saves the error as an answer. `internal/durablejob`
+  runner that trusts the exit code saves the error as an answer. `internal/t3-transcriptextraction-job/call`
   names the provider `local-dgx1.deepseek-v4.1-flash-1017-128k` and treats an
   `Error:` first line as a failure.
 - A model call can outlive its timeout when a child holds the pipe open.
-  `internal/durablejob` kills the process on timeout instead of waiting.
+  `internal/t3-transcriptextraction-job/call` kills the process on timeout instead of waiting.
 - Progress log: `logs/relevance-window-vote.progress.log`. Job answers:
   `model-answer/job/relevance-window-vote/done/`.
 - The job names, the `window_kind` values, the `window_id` prefixes, and the

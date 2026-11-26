@@ -13,6 +13,8 @@ import (
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-relevance/consensus"
 	aggregateindex "github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-aggregate/index"
 	photoindex "github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-photo/index"
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-idea/ideaconcept"
+	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-idea/ideapaper"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-idea/ideaparse"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t2-transcriptextraction-idea/ideaprompt"
 	"github.com/kcg-ml/kcg-llm.transcript-extraction/internal/t1-transcriptextraction-split/part"
@@ -54,6 +56,8 @@ Subcommands:
   photo-index          join the photo answers into data/index.csv
   idea-windows         build the phase 1 idea-extraction windows and prompts
   idea-index           turn the idea answers into data/idea_items.csv
+  idea-paper           turn the idea items into data/papers.csv
+  idea-concept         turn the idea items into data/concepts.csv
   aggregate            turn the model answers into the summary and index tables
   job                  run one durable model job, with a progress line
   pipeline             run the whole chain in order
@@ -156,6 +160,20 @@ func RunIdeaIndex(projectFolderPath string, argumentList []string) error {
 	flagSet := flag.NewFlagSet("idea-index", flag.ExitOnError)
 	flagSet.Parse(argumentList)
 	return ideaparse.Run(projectFolderPath)
+}
+
+// RunIdeaPaper runs the paper stage, which writes data/papers.csv.
+func RunIdeaPaper(projectFolderPath string, argumentList []string) error {
+	flagSet := flag.NewFlagSet("idea-paper", flag.ExitOnError)
+	flagSet.Parse(argumentList)
+	return ideapaper.Run(projectFolderPath)
+}
+
+// RunIdeaConcept runs the concept stage, which writes data/concepts.csv.
+func RunIdeaConcept(projectFolderPath string, argumentList []string) error {
+	flagSet := flag.NewFlagSet("idea-concept", flag.ExitOnError)
+	flagSet.Parse(argumentList)
+	return ideaconcept.Run(projectFolderPath)
 }
 
 // RunAggregate runs the aggregation stage.

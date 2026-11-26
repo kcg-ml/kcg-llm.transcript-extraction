@@ -34,6 +34,8 @@ func main() {
 		"photo-index":         subcommand.RunPhotoIndex,
 		"idea-windows":        subcommand.RunIdeaWindows,
 		"idea-index":          subcommand.RunIdeaIndex,
+		"idea-paper":          subcommand.RunIdeaPaper,
+		"idea-concept":        subcommand.RunIdeaConcept,
 		"aggregate":           subcommand.RunAggregate,
 		"job":                 subcommand.RunJob,
 		"pipeline":            subcommand.RunPipeline,

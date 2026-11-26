@@ -64,6 +64,8 @@ that project is a sub-folder. There is no Python in this repository.
 | `t2-...-photo/index` | `model-answer/job/photo-content/done/` | `data/photo_index.csv`, the photo rows of `data/index.csv` |
 | `t2-...-idea/ideaprompt` | `data/messages.csv`, `data/summaries.csv` | `prompts/idea-extraction-*.txt` |
 | `t2-...-idea/ideaparse` | `model-answer/job/idea-extraction/done/` | `data/idea_windows.csv`, `data/idea_items.csv` |
+| `t2-...-idea/ideapaper` | `data/idea_items.csv` | `data/papers.csv` |
+| `t2-...-idea/ideaconcept` | `data/idea_items.csv` | `data/concepts.csv` |
 | `t2-...-aggregate/index` | `model-answer/` | `data/summaries.csv`, `data/summary_items.csv`, `data/summary_rollup.csv`, `data/index*.csv`, `prompts/summary-window-of-whole-chat-*.txt` |
 | `t3-...-job/run` | `prompts/`, `data/photos.csv` | `model-answer/job/<job>/done/<id>.txt`, `logs/<job>.progress.log` |
 | `t4-...-chain/chainunit` | `data/` | the unit list of one durable job |
@@ -73,8 +75,9 @@ that project is a sub-folder. There is no Python in this repository.
 
 `cmd/command` is the only entry point. Its subcommands are `extract`, `split`,
 `references`, `translate`, `windows`, `relevance-windows`, `relevance-solo`,
-`relevance-consensus`, `photos`, `photo-index`, `aggregate`, `job`, and
-`pipeline`. `cmd/csvcheck` checks the column count of every CSV.
+`relevance-consensus`, `photos`, `photo-index`, `idea-windows`, `idea-index`,
+`idea-paper`, `idea-concept`, `aggregate`, `job`, and `pipeline`.
+`cmd/csvcheck` checks the column count of every CSV.
 
 Run the rule stages with `./build.sh --rules`, then a model stage with
 `transcriptextraction job`.
@@ -156,7 +159,7 @@ per paragraph, and a code fence stays whole. Every mode covers the same
 
 10-message windows roll into 100-message windows, those roll into months, and
 the months roll into one summary of the chat. A rollup is a model answer, not
-a string join: `internal/summaryaggregation` writes `prompts/summary-window-of-whole-chat-*.txt` and
+a string join: `internal/t2-transcriptextraction-aggregate/rollup` writes `prompts/summary-window-of-whole-chat-*.txt` and
 `transcriptextraction job --job summary-window-of-whole-chat` answers it.
 
 ## The photo stage
